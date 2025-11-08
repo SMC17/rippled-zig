@@ -17,7 +17,7 @@ pub fn build(b: *std.Build) void {
         .root_module = main_module,
     });
     exe.linkLibC();
-    
+
     // secp256k1 is optional - for full ECDSA signature support
     // Install: brew install secp256k1 (macOS) or apt-get install libsecp256k1-dev (Ubuntu)
     // Then uncomment the line below:
