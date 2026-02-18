@@ -118,12 +118,12 @@ pub fn main() !void {
     const out_mixed = try mixed.finish();
     defer allocator.free(out_mixed);
     const expected_mixed_hex =
-        "120000240000000155a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf68000000000000000a";
+        "120000240000000155000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f68000000000000000a";
     const expected_mixed = try parseHexAlloc(allocator, expected_mixed_hex);
     defer allocator.free(expected_mixed);
     if (!std.mem.eql(u8, out_mixed, expected_mixed)) return error.MixedVectorMismatch;
     const mixed_hash = crypto.Hash.sha512Half(out_mixed);
-    const expected_mixed_hash = try parseHex32("4d55b90732c566b8b9c1f2ef9e2050a6934c65916c4f373e81ef2fac735caa9b");
+    const expected_mixed_hash = try parseHex32("2482975f8c1f773e1aa0f45528df18834b0e08a1300105d668caedb8166f806f");
     if (!std.mem.eql(u8, &mixed_hash, &expected_mixed_hash)) return error.MixedHashVectorMismatch;
 
     // Third canonical vector: VL boundary encoding at 192/193 bytes.
