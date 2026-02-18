@@ -75,13 +75,13 @@ pub fn main() !void {
     const out_c = try c.finish();
     defer allocator.free(out_c);
 
-    const expected_serialized_hex_2 = "120000810102030405060708090a0b0c0d0e0f1011121314240000000168000000000000000a";
+    const expected_serialized_hex_2 = "120000240000000168000000000000000a810102030405060708090a0b0c0d0e0f1011121314";
     const expected_serialized_2 = try parseHexAlloc(allocator, expected_serialized_hex_2);
     defer allocator.free(expected_serialized_2);
     if (!std.mem.eql(u8, out_c, expected_serialized_2)) return error.CanonicalVector2Mismatch;
 
     const serialized_hash_2 = crypto.Hash.sha512Half(out_c);
-    const expected_hash_2 = try parseHex32("d158b88aafca61216f5eac68601811e8da81bf89d9f2577426570de005d7611b");
+    const expected_hash_2 = try parseHex32("09bd8a5ed82ddae1eeba4eb1a8ad4083ad59c6ece4b3e6443517eab7b85f6e2f");
     if (!std.mem.eql(u8, &serialized_hash_2, &expected_hash_2)) return error.CanonicalHashVector2Mismatch;
 
     // Third canonical vector: VL boundary encoding at 192/193 bytes.
