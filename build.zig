@@ -55,6 +55,7 @@ pub fn build(b: *std.Build) void {
     }
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
+    run_unit_tests.stdio = .inherit;
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
 
@@ -73,6 +74,7 @@ pub fn build(b: *std.Build) void {
         gate_b_tests.linkSystemLibrary("secp256k1");
     }
     const run_gate_b_tests = b.addRunArtifact(gate_b_tests);
+    run_gate_b_tests.stdio = .inherit;
     const gate_b_step = b.step("gate-b", "Run Gate B deterministic checks");
     gate_b_step.dependOn(&run_gate_b_tests.step);
 
@@ -91,6 +93,7 @@ pub fn build(b: *std.Build) void {
         gate_c_tests.linkSystemLibrary("secp256k1");
     }
     const run_gate_c_tests = b.addRunArtifact(gate_c_tests);
+    run_gate_c_tests.stdio = .inherit;
     const gate_c_step = b.step("gate-c", "Run Gate C parity checks");
     gate_c_step.dependOn(&run_gate_c_tests.step);
 
@@ -109,6 +112,7 @@ pub fn build(b: *std.Build) void {
         gate_e_tests.linkSystemLibrary("secp256k1");
     }
     const run_gate_e_tests = b.addRunArtifact(gate_e_tests);
+    run_gate_e_tests.stdio = .inherit;
     const gate_e_step = b.step("gate-e", "Run Gate E security checks");
     gate_e_step.dependOn(&run_gate_e_tests.step);
 }
