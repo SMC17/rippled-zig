@@ -11,6 +11,7 @@ docs/planning/
 # Test data
 .test_data/
 test_data/*.json
+!test_data/secp_vector_provenance.json
 
 # Database files
 data/

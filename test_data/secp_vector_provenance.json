@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "gate": "C",
+  "owner": "crypto-parity",
+  "source_fixture": {
+    "path": "test_data/current_ledger.json",
+    "sha256": "721494ebfbfa291368ec6ae280bb43b45dcd39821d8fdc182ce1da418bb44922",
+    "captured_utc": "2025-10-29T18:37:20Z",
+    "ledger_index": 11900686,
+    "tx_hash": "09D0D3C0AB0E6D8EBB3117C2FF1DD72F063818F528AF54A4553C8541DD2E8B5B"
+  },
+  "strict_vectors": {
+    "positive": [
+      {
+        "name": "v1_uncompressed_sig72",
+        "pubkey_hex": "048699404dcbc4fbf18381b4dd7a291038330d1b68a0f499a05615c3d1c4a4f103367afcb6b35377552b5c2c505ebb1da1ff3fdcfdf24115abe13dcbb5c8229398",
+        "signature_hex": "3046022100eabd8871e5ec54cb2953bd03e8325921918d6d1cbb07b86c391f9ae63c8bb6d1022100cc621dae5186149b25f465e1c44d840404b11a94b789c6e0411a7f60386b282b",
+        "signing_hash_hex": "a4f2d3f63af8364de7341a0e22e5b4c3429ea09f82bed5c70284c6da43f0ee0f"
+      },
+      {
+        "name": "v2_compressed_sig72",
+        "pubkey_hex": "0319c7dfcb8abd947d864dc6799741d32f6d2c7325472407ea0c373335732daf3a",
+        "signature_hex": "3046022100cb4528d4f60cd9dd7ee395bc719f0468bb8fe2976c16b9ed0ec10d682b3ec7c6022100d02c6ceaee5f750c2d123bdb8f0803009ebde2a31312ac3d332eec7f8b084f93",
+        "signing_hash_hex": "60e5289f93110f248697c9ed6ce1df68c84276c4285400f9621bc29e06a6164f"
+      },
+      {
+        "name": "v3_compressed_sig71",
+        "pubkey_hex": "0249d90465c15548c5819079420bdc7409e0f9ae43b5150de87a452adea369a39c",
+        "signature_hex": "3045022100af8126d584359ef6f7e35990478fac562a31651e2a35c9c478d56a22f33ea0fe02206181f8830026382efc74523f8fbea22d14507ae53457b2cd4ebc03ff5c97bd6a",
+        "signing_hash_hex": "f9a93b3ec683df7f5111d3ae4311d3d7a13fb6678b1a3513f21e76297a32ac48"
+      }
+    ],
+    "negative_controls": [
+      "tampered_hash",
+      "tampered_rs",
+      "wrong_pubkey"
+    ]
+  },
+  "signing_domain": {
+    "prefix_hex": "53545800",
+    "checks": [
+      "stx_hash_matches_vector",
+      "tx_body_hash_differs_from_signing_hash",
+      "wrong_prefix_hash_differs_from_signing_hash"
+    ]
+  }
+}

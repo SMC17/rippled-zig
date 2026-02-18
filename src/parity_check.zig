@@ -18,6 +18,19 @@ const Fixture = struct {
     fee_ledger_index: i64,
     ledger_hash: []const u8,
     ledger_index: i64,
+    ledger_account_hash: []const u8,
+    ledger_parent_hash: []const u8,
+    ledger_transaction_hash: []const u8,
+    ledger_total_coins: []const u8,
+    ledger_close_time: i64,
+    ledger_parent_close_time: i64,
+    ledger_close_time_resolution: i64,
+    ledger_close_flags: i64,
+    ledger_transactions_count: usize,
+    ledger_tx0_account: []const u8,
+    ledger_tx0_type: []const u8,
+    ledger_tx0_fee: []const u8,
+    ledger_tx0_sequence: i64,
     account_status: []const u8,
     account_error_code: i64,
     account_validated: bool,
@@ -266,6 +279,54 @@ fn assertLedgerFixture(payload: []const u8, allocator: std.mem.Allocator, fixtur
 
     const index = try getIntegerFlexible(try getField(ledger_obj, "ledger_index"));
     if (index != fixture.ledger_index) return error.LedgerFixtureIndexMismatch;
+
+    const account_hash = try getString(try getField(ledger_obj, "account_hash"));
+    if (!std.mem.eql(u8, account_hash, fixture.ledger_account_hash)) return error.LedgerFixtureAccountHashMismatch;
+
+    const parent_hash = try getString(try getField(ledger_obj, "parent_hash"));
+    if (!std.mem.eql(u8, parent_hash, fixture.ledger_parent_hash)) return error.LedgerFixtureParentHashMismatch;
+
+    const transaction_hash = try getString(try getField(ledger_obj, "transaction_hash"));
+    if (!std.mem.eql(u8, transaction_hash, fixture.ledger_transaction_hash)) return error.LedgerFixtureTransactionHashMismatch;
+
+    const total_coins = try getString(try getField(ledger_obj, "total_coins"));
+    if (!std.mem.eql(u8, total_coins, fixture.ledger_total_coins)) return error.LedgerFixtureTotalCoinsMismatch;
+
+    const close_time = try getIntegerFlexible(try getField(ledger_obj, "close_time"));
+    if (close_time != fixture.ledger_close_time) return error.LedgerFixtureCloseTimeMismatch;
+
+    const parent_close_time = try getIntegerFlexible(try getField(ledger_obj, "parent_close_time"));
+    if (parent_close_time != fixture.ledger_parent_close_time) return error.LedgerFixtureParentCloseTimeMismatch;
+
+    const close_time_resolution = try getIntegerFlexible(try getField(ledger_obj, "close_time_resolution"));
+    if (close_time_resolution != fixture.ledger_close_time_resolution) return error.LedgerFixtureCloseTimeResolutionMismatch;
+
+    const close_flags = try getIntegerFlexible(try getField(ledger_obj, "close_flags"));
+    if (close_flags != fixture.ledger_close_flags) return error.LedgerFixtureCloseFlagsMismatch;
+
+    const closed = try getBool(try getField(ledger_obj, "closed"));
+    if (!closed) return error.LedgerFixtureClosedMismatch;
+
+    const txs_value = try getField(ledger_obj, "transactions");
+    const txs = switch (txs_value) {
+        .array => |arr| arr,
+        else => return error.ExpectedTransactionsArray,
+    };
+    if (txs.items.len != fixture.ledger_transactions_count) return error.LedgerFixtureTransactionsCountMismatch;
+    if (txs.items.len == 0) return error.EmptyTransactions;
+
+    const first_tx = try getObject(txs.items[0]);
+    const first_tx_account = try getString(try getField(first_tx, "Account"));
+    if (!std.mem.eql(u8, first_tx_account, fixture.ledger_tx0_account)) return error.LedgerFixtureTx0AccountMismatch;
+
+    const first_tx_type = try getString(try getField(first_tx, "TransactionType"));
+    if (!std.mem.eql(u8, first_tx_type, fixture.ledger_tx0_type)) return error.LedgerFixtureTx0TypeMismatch;
+
+    const first_tx_fee = try getString(try getField(first_tx, "Fee"));
+    if (!std.mem.eql(u8, first_tx_fee, fixture.ledger_tx0_fee)) return error.LedgerFixtureTx0FeeMismatch;
+
+    const first_tx_sequence = try getIntegerFlexible(try getField(first_tx, "Sequence"));
+    if (first_tx_sequence != fixture.ledger_tx0_sequence) return error.LedgerFixtureTx0SequenceMismatch;
 }
 
 fn assertSecpFixture(payload: []const u8, allocator: std.mem.Allocator, fixture: Fixture) !void {
@@ -477,6 +538,19 @@ pub fn main() !void {
         .fee_ledger_index = 11900687,
         .ledger_hash = "FB90529615FA52790E2B2E24C32A482DBF9F969C3FDC2726ED0A64A40962BF00",
         .ledger_index = 11900686,
+        .ledger_account_hash = "A569ACFF4EB95A65B8FD3A9A7C0E68EE17A96EA051896A3F235863ED776ACBAE",
+        .ledger_parent_hash = "630D7DDAFBCF0449FEC7E4EB4056F2187BDCC6C4315788D6416766A4B7C7F6B6",
+        .ledger_transaction_hash = "FAA3C9DB987A612C9A4B011805F00BF69DA56E8DF127D9AACB7C13A1CD0BC505",
+        .ledger_total_coins = "99999914350172385",
+        .ledger_close_time = 815078240,
+        .ledger_parent_close_time = 815078232,
+        .ledger_close_time_resolution = 10,
+        .ledger_close_flags = 0,
+        .ledger_transactions_count = 6,
+        .ledger_tx0_account = "rPickFLAKK7YkMwKvhSEN1yJAtfnB6qRJc",
+        .ledger_tx0_type = "SignerListSet",
+        .ledger_tx0_fee = "7500",
+        .ledger_tx0_sequence = 11900682,
         .account_status = "error",
         .account_error_code = 35,
         .account_validated = true,

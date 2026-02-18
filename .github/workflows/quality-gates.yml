@@ -220,6 +220,49 @@ jobs:
             exit 1
           fi
 
+          c_trend_file="$(find artifacts -name crypto-trend-summary-7d.json | head -n 1 || true)"
+          if [ -z "$c_trend_file" ]; then
+            echo "Gate C trend summary missing in artifacts"
+            exit 1
+          fi
+
+          c_trend_status="$(jq -r '.status // "unknown"' "$c_trend_file")"
+          if [ "$c_trend_status" != "ok" ]; then
+            echo "Gate C trend summary is not evaluable (status=$c_trend_status)"
+            exit 1
+          fi
+
+          c_min_success_rate=95
+          c_min_avg_pos=3
+          c_min_avg_signing=3
+          c_min_consec_strict=0
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            c_min_success_rate=99
+            c_min_consec_strict=3
+          fi
+
+          c_success_rate="$(jq -r '.summary.success_rate' "$c_trend_file")"
+          c_avg_pos="$(jq -r '.summary.avg_positive_vectors' "$c_trend_file")"
+          c_avg_signing="$(jq -r '.summary.avg_signing_domain_checks' "$c_trend_file")"
+          c_consec_strict="$(jq -r '.summary.consecutive_strict_passes_from_latest' "$c_trend_file")"
+
+          if ! awk -v got="$c_success_rate" -v min="$c_min_success_rate" 'BEGIN { exit !(got+0 >= min+0) }'; then
+            echo "Gate C trend success_rate below threshold: ${c_success_rate}% < ${c_min_success_rate}%"
+            exit 1
+          fi
+          if ! awk -v got="$c_avg_pos" -v min="$c_min_avg_pos" 'BEGIN { exit !(got+0 >= min+0) }'; then
+            echo "Gate C trend avg positive vectors below threshold: ${c_avg_pos} < ${c_min_avg_pos}"
+            exit 1
+          fi
+          if ! awk -v got="$c_avg_signing" -v min="$c_min_avg_signing" 'BEGIN { exit !(got+0 >= min+0) }'; then
+            echo "Gate C trend avg signing-domain checks below threshold: ${c_avg_signing} < ${c_min_avg_signing}"
+            exit 1
+          fi
+          if ! awk -v got="$c_consec_strict" -v min="$c_min_consec_strict" 'BEGIN { exit !(got+0 >= min+0) }'; then
+            echo "Gate C trend strict consecutive passes below threshold: ${c_consec_strict} < ${c_min_consec_strict}"
+            exit 1
+          fi
+
       - name: Build Ops Digest
         run: |
           ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"

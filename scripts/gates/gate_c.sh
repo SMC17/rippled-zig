@@ -6,6 +6,18 @@ mkdir -p "$artifact_dir"
 strict_crypto="${GATE_C_STRICT_CRYPTO:-false}"
 ts_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
+sha256_file() {
+  local path="$1"
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$path" | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$path" | awk '{print $1}'
+  else
+    echo "No SHA256 tool found (need shasum or sha256sum)" >&2
+    exit 1
+  fi
+}
+
 # Parity-focused suite through build graph (injects build options).
 if [[ "$strict_crypto" == "true" ]]; then
   zig build -Dsecp256k1=true gate-c 2>&1 | tee "$artifact_dir/parity.log"
@@ -26,6 +38,51 @@ if (( signing_domain_checks < 3 )); then
 fi
 if [[ "$strict_crypto" == "true" ]] && (( negative_crypto_vectors < 3 )); then
   echo "Gate C strict mode requires >=3 negative secp vectors, got $negative_crypto_vectors" >&2
+  exit 1
+fi
+
+# secp vector provenance and fixture SHA pin checks.
+provenance_json="test_data/secp_vector_provenance.json"
+provenance_pin_file="test_data/secp_vector_provenance.sha256"
+fixture_manifest="test_data/fixture_manifest.sha256"
+if [[ ! -f "$provenance_json" || ! -f "$provenance_pin_file" ]]; then
+  echo "Missing secp provenance files: $provenance_json and/or $provenance_pin_file" >&2
+  exit 1
+fi
+if [[ ! -f "$fixture_manifest" ]]; then
+  echo "Missing fixture manifest: $fixture_manifest" >&2
+  exit 1
+fi
+
+expected_provenance_sha="$(awk '{print $1}' "$provenance_pin_file")"
+actual_provenance_sha="$(sha256_file "$provenance_json")"
+if [[ "$expected_provenance_sha" != "$actual_provenance_sha" ]]; then
+  echo "Secp provenance SHA pin mismatch: expected $expected_provenance_sha got $actual_provenance_sha" >&2
+  exit 1
+fi
+
+fixture_path="$(jq -r '.source_fixture.path' "$provenance_json")"
+fixture_sha_pinned="$(jq -r '.source_fixture.sha256' "$provenance_json")"
+if [[ "$fixture_path" == "null" || "$fixture_sha_pinned" == "null" ]]; then
+  echo "Secp provenance missing source_fixture.path or source_fixture.sha256" >&2
+  exit 1
+fi
+if [[ ! -f "$fixture_path" ]]; then
+  echo "Secp source fixture path missing: $fixture_path" >&2
+  exit 1
+fi
+actual_fixture_sha="$(sha256_file "$fixture_path")"
+if [[ "$actual_fixture_sha" != "$fixture_sha_pinned" ]]; then
+  echo "Fixture SHA mismatch for $fixture_path: pinned $fixture_sha_pinned got $actual_fixture_sha" >&2
+  exit 1
+fi
+manifest_fixture_sha="$(awk -v p="$fixture_path" '$2==p {print $1}' "$fixture_manifest")"
+if [[ -z "$manifest_fixture_sha" ]]; then
+  echo "Fixture path $fixture_path not found in $fixture_manifest" >&2
+  exit 1
+fi
+if [[ "$manifest_fixture_sha" != "$fixture_sha_pinned" ]]; then
+  echo "Fixture SHA pin mismatch vs manifest for $fixture_path: provenance $fixture_sha_pinned manifest $manifest_fixture_sha" >&2
   exit 1
 fi
 
@@ -59,7 +116,20 @@ jq -e '.result.ledger_hash == "FB90529615FA52790E2B2E24C32A482DBF9F969C3FDC2726E
 jq -e '.result.status == "success"' test_data/current_ledger.json > /dev/null
 jq -e '(.result.ledger.ledger_index | tostring) == "11900686"' test_data/current_ledger.json > /dev/null
 jq -e '.result.ledger.ledger_hash == "FB90529615FA52790E2B2E24C32A482DBF9F969C3FDC2726ED0A64A40962BF00"' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.account_hash == "A569ACFF4EB95A65B8FD3A9A7C0E68EE17A96EA051896A3F235863ED776ACBAE"' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.parent_hash == "630D7DDAFBCF0449FEC7E4EB4056F2187BDCC6C4315788D6416766A4B7C7F6B6"' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.transaction_hash == "FAA3C9DB987A612C9A4B011805F00BF69DA56E8DF127D9AACB7C13A1CD0BC505"' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.total_coins == "99999914350172385"' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.close_time == 815078240' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.parent_close_time == 815078232' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.close_time_resolution == 10' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.close_flags == 0' test_data/current_ledger.json > /dev/null
 jq -e '.result.ledger.closed == true' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.transactions | length == 6' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.transactions[0].Account == "rPickFLAKK7YkMwKvhSEN1yJAtfnB6qRJc"' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.transactions[0].TransactionType == "SignerListSet"' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.transactions[0].Fee == "7500"' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.transactions[0].Sequence == 11900682' test_data/current_ledger.json > /dev/null
 jq -e '.result.ledger.transactions[0].hash == "09D0D3C0AB0E6D8EBB3117C2FF1DD72F063818F528AF54A4553C8541DD2E8B5B"' test_data/current_ledger.json > /dev/null
 jq -e '.result.ledger.transactions[0].SigningPubKey == "02D3FC6F04117E6420CAEA735C57CEEC934820BBCD109200933F6BBDD98F7BFBD9"' test_data/current_ledger.json > /dev/null
 jq -e '.result.ledger.transactions[0].TxnSignature == "3045022100E30FEACFAE9ED8034C4E24203BBFD6CE0D48ABCA901EDCE6EE04AA281A4DD73F02200CA7FDF03DC0B56F6E6FC5B499B4830F1ABD6A57FC4BE5C03F2CAF3CAFD1FF85"' test_data/current_ledger.json > /dev/null
@@ -94,7 +164,10 @@ cat > "$artifact_dir/parity-report.json" <<JSON
   "checks": [
     "rpc-shape-suite",
     "fixture-contracts",
+    "secp-provenance-sha-pin",
+    "secp-fixture-sha-pin",
     "snapshot-field-values",
+    "snapshot-ledger-value-level-fields",
     "snapshot-validated-ledger-seq-hash",
     "cross-fixture-consistency",
     "secp-fixture-signature-values",
