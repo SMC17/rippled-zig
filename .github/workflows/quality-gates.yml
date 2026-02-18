@@ -5,6 +5,8 @@ on:
     branches: [ main, develop ]
   push:
     branches: [ main, develop ]
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       run_live_testnet:
@@ -109,6 +111,8 @@ jobs:
       TESTNET_RPC_URL: ${{ secrets.TESTNET_RPC_URL }}
       TESTNET_WS_URL: ${{ secrets.TESTNET_WS_URL }}
       GATE_D_ALLOW_SKIP_NO_SECRETS: "true"
+      GATE_D_PROFILE: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
+      GATE_D_MAX_LATENCY_S: ${{ github.event_name == 'schedule' && '3' || '5' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -131,6 +135,10 @@ jobs:
     name: Gate E - Security/Fuzz/Static
     runs-on: ubuntu-latest
     needs: [gate-c-parity]
+    env:
+      GATE_E_PROFILE: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
+      GATE_E_MIN_FUZZ_CASES: ${{ github.event_name == 'schedule' && '100000' || '25000' }}
+      GATE_E_MAX_RUNTIME_S: ${{ github.event_name == 'schedule' && '60' || '20' }}
     steps:
       - uses: actions/checkout@v4
 

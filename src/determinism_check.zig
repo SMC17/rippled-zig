@@ -24,6 +24,12 @@ fn hashFixtureFile(path: []const u8, allocator: std.mem.Allocator) ![32]u8 {
     return crypto.Hash.sha512Half(data);
 }
 
+fn fillIncrementing(comptime N: usize) [N]u8 {
+    var out: [N]u8 = undefined;
+    for (&out, 0..) |*byte, i| byte.* = @intCast(i % 256);
+    return out;
+}
+
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
@@ -84,9 +90,44 @@ pub fn main() !void {
     const expected_hash_2 = try parseHex32("09bd8a5ed82ddae1eeba4eb1a8ad4083ad59c6ece4b3e6443517eab7b85f6e2f");
     if (!std.mem.eql(u8, &serialized_hash_2, &expected_hash_2)) return error.CanonicalHashVector2Mismatch;
 
+    // Fourth canonical vector: amount-like drops value encoded as UInt64 field.
+    // Provenance: expected bytes + hash generated from deterministic encoded output.
+    var amount_vec = try canonical.CanonicalSerializer.init(allocator);
+    defer amount_vec.deinit();
+    try amount_vec.addUInt16(2, 0);
+    try amount_vec.addUInt64(1, 1_000_000); // 1 XRP in drops
+    const out_amount = try amount_vec.finish();
+    defer allocator.free(out_amount);
+    const expected_amount_hex = "1200006100000000000f4240";
+    const expected_amount = try parseHexAlloc(allocator, expected_amount_hex);
+    defer allocator.free(expected_amount);
+    if (!std.mem.eql(u8, out_amount, expected_amount)) return error.AmountVectorMismatch;
+    const amount_hash = crypto.Hash.sha512Half(out_amount);
+    const expected_amount_hash = try parseHex32("dab6b224b0a9b548231ce1e9a60f6be66a5a211f736f82daba7be401f9edb6d5");
+    if (!std.mem.eql(u8, &amount_hash, &expected_amount_hash)) return error.AmountHashVectorMismatch;
+
+    // Fifth canonical vector: mixed field ordering with Hash256 + UInt fields.
+    // Provenance: expected bytes + hash generated from deterministic encoded output.
+    const hash256_payload = fillIncrementing(32);
+    var mixed = try canonical.CanonicalSerializer.init(allocator);
+    defer mixed.deinit();
+    try mixed.addUInt64(8, 10);
+    try mixed.addHash256(5, hash256_payload);
+    try mixed.addUInt16(2, 0);
+    try mixed.addUInt32(4, 1);
+    const out_mixed = try mixed.finish();
+    defer allocator.free(out_mixed);
+    const expected_mixed_hex =
+        "120000240000000155a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf68000000000000000a";
+    const expected_mixed = try parseHexAlloc(allocator, expected_mixed_hex);
+    defer allocator.free(expected_mixed);
+    if (!std.mem.eql(u8, out_mixed, expected_mixed)) return error.MixedVectorMismatch;
+    const mixed_hash = crypto.Hash.sha512Half(out_mixed);
+    const expected_mixed_hash = try parseHex32("4d55b90732c566b8b9c1f2ef9e2050a6934c65916c4f373e81ef2fac735caa9b");
+    if (!std.mem.eql(u8, &mixed_hash, &expected_mixed_hash)) return error.MixedHashVectorMismatch;
+
     // Third canonical vector: VL boundary encoding at 192/193 bytes.
-    var vl_192_payload: [192]u8 = undefined;
-    for (&vl_192_payload, 0..) |*byte, i| byte.* = @intCast(i);
+    const vl_192_payload = fillIncrementing(192);
     var vl_192 = try canonical.CanonicalSerializer.init(allocator);
     defer vl_192.deinit();
     try vl_192.addVL(3, &vl_192_payload);
@@ -99,8 +140,7 @@ pub fn main() !void {
     const expected_vl_192_hash = try parseHex32("2d12f8dafee6a41c108376601196fb2e30a20f2c566ddf7897cd34149906b19e");
     if (!std.mem.eql(u8, &out_vl_192_hash, &expected_vl_192_hash)) return error.VL192HashMismatch;
 
-    var vl_193_payload: [193]u8 = undefined;
-    for (&vl_193_payload, 0..) |*byte, i| byte.* = @intCast(i);
+    const vl_193_payload = fillIncrementing(193);
     var vl_193 = try canonical.CanonicalSerializer.init(allocator);
     defer vl_193.deinit();
     try vl_193.addVL(3, &vl_193_payload);
@@ -112,6 +152,34 @@ pub fn main() !void {
     const out_vl_193_hash = crypto.Hash.sha512Half(out_vl_193);
     const expected_vl_193_hash = try parseHex32("31ac058dc1677933d75d3c1cb878a09db093a058e0262728366e93ba1b39111a");
     if (!std.mem.eql(u8, &out_vl_193_hash, &expected_vl_193_hash)) return error.VL193HashMismatch;
+
+    // Sixth canonical vector: VL boundary encoding at 12480/12481 bytes.
+    // Provenance: expected hashes computed from encoded bytes using SHA-512Half.
+    const vl_12480_payload = fillIncrementing(12480);
+    var vl_12480 = try canonical.CanonicalSerializer.init(allocator);
+    defer vl_12480.deinit();
+    try vl_12480.addVL(3, &vl_12480_payload);
+    const out_vl_12480 = try vl_12480.finish();
+    defer allocator.free(out_vl_12480);
+    if (out_vl_12480.len != 12483) return error.VL12480UnexpectedLength;
+    if (out_vl_12480[0] != 0x73 or out_vl_12480[1] != 0xF0 or out_vl_12480[2] != 0xFF) return error.VL12480UnexpectedPrefix;
+    if (!std.mem.eql(u8, out_vl_12480[3..], &vl_12480_payload)) return error.VL12480PayloadMismatch;
+    const out_vl_12480_hash = crypto.Hash.sha512Half(out_vl_12480);
+    const expected_vl_12480_hash = try parseHex32("a96ff359d65cb919b763174f7f74b4bd0d9a8b4a2ecc6dbaf250b94da3dee051");
+    if (!std.mem.eql(u8, &out_vl_12480_hash, &expected_vl_12480_hash)) return error.VL12480HashMismatch;
+
+    const vl_12481_payload = fillIncrementing(12481);
+    var vl_12481 = try canonical.CanonicalSerializer.init(allocator);
+    defer vl_12481.deinit();
+    try vl_12481.addVL(3, &vl_12481_payload);
+    const out_vl_12481 = try vl_12481.finish();
+    defer allocator.free(out_vl_12481);
+    if (out_vl_12481.len != 12485) return error.VL12481UnexpectedLength;
+    if (out_vl_12481[0] != 0x73 or out_vl_12481[1] != 0xF1 or out_vl_12481[2] != 0x00 or out_vl_12481[3] != 0x00) return error.VL12481UnexpectedPrefix;
+    if (!std.mem.eql(u8, out_vl_12481[4..], &vl_12481_payload)) return error.VL12481PayloadMismatch;
+    const out_vl_12481_hash = crypto.Hash.sha512Half(out_vl_12481);
+    const expected_vl_12481_hash = try parseHex32("ef21ca47bc4b5bb1783515b38ec7bf7f5033f62edd7f4ad153092b91dbef886f");
+    if (!std.mem.eql(u8, &out_vl_12481_hash, &expected_vl_12481_hash)) return error.VL12481HashMismatch;
 
     const fixtures = [_]struct { path: []const u8, expected_sha512_half_hex: []const u8 }{
         .{ .path = "test_data/current_ledger.json", .expected_sha512_half_hex = "e6fcf8db7b7f53f4cc854951603299702d142b32d776403f15b7e71e6db8c73c" },

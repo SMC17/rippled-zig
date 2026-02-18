@@ -3,7 +3,7 @@
 Canonical status for this repository. If any other file conflicts with this document, this document is authoritative.
 
 Last Updated: 2026-02-18
-Commit: 807bb02 (latest pushed hardening slice), with Gate B shadowing fix pending CI confirmation
+Commit: 30fb4cb (all quality gates green; Gate E ripgrep portability fix)
 Status Owner: Engineering
 Scope: `main`
 
@@ -25,7 +25,7 @@ Scope: `main`
 | Week Of | Gate A | Gate B | Gate C | Gate D | Gate E | Notes |
 |---|---|---|---|---|---|---|
 | 2026-02-16 | PASS | PASS | PASS | PASS | PASS | Baseline quality gates green; Gate D policy accepts explicit `skipped` artifact when secrets are unavailable. |
-| 2026-02-18 | PASS | PENDING | PASS | SKIPPED/POLICY | PASS | Gate B variable shadowing compile failure identified and fixed in `src/determinism_check.zig`; awaiting CI rerun result on `main`. |
+| 2026-02-18 | PASS | PASS | PASS | SKIPPED/POLICY | PASS | Gate B/C/E hardening merged; Gate E is now rg/grep portable; release summary green on `main`. |
 
 ## Release Decision Block
 - Current Decision: `NO-GO`
@@ -45,6 +45,7 @@ Scope: `main`
 | C-002 | Quality gates A/B/C/E are required and green in PR flow | A/B/C/E | CI workflow + run history | `https://github.com/SMC17/rippled-zig/actions/workflows/quality-gates.yml?query=branch%3Amain` | working tree | 2026-02-18 | pending | PASS |
 | C-003 | Gate D supports strict live conformance and explicit skip artifact mode | Gate D | gate script + artifacts | `scripts/gates/gate_d.sh`, quality-gates artifacts | working tree | 2026-02-18 | pending | PASS |
 | C-004 | Gate E enforces security checks plus fuzz budget/runtime thresholds | Gate E | gate script + checker | `scripts/gates/gate_e.sh`, `src/security_check.zig` | working tree | 2026-02-18 | pending | PASS |
+| C-005 | Branch protection required-check baseline is documented for `main` | Repo Policy | branch protection runbook | `.github/BRANCH_PROTECTION_BASELINE.md` | working tree | 2026-02-18 | pending | PASS |
 
 ## Gate Definitions
 ### Gate A: Build + Unit/Integration
@@ -100,12 +101,15 @@ Pass Criteria:
 | R-003 | Partial secp256k1 and sync paths | High | Crypto/Network | complete implementation + conformance tests | 2026-03-04 | Open |
 
 ## Changes Since Last Update
-- Fixed Gate B CI compile regression in `src/determinism_check.zig` (loop capture shadowing local serializer variable).
-- Consolidated stale status documents to point to `PROJECT_STATUS.md` as canonical source.
-- Added fixed fixture hash vectors and canonical serialization hash vector in Gate B.
-- Upgraded Gate C from shape/type checks to value-level parity snapshots for local RPC and captured fixtures.
-- Tightened Gate D schema, protocol, network ID, fee, latency, and cross-endpoint consistency thresholds.
-- Added Gate E mutational fuzz budget and runtime thresholds with enforced minimum cases.
+- Locked baseline with explicit branch-protection required-check names in `.github/BRANCH_PROTECTION_BASELINE.md`.
+- Expanded Gate B deterministic vectors to cover:
+  - VL length boundaries `192/193` and `12480/12481`,
+  - amount-like drops encoding vector,
+  - mixed-field ordering vector including `Hash256`,
+  - fixed expected serialized bytes and SHA-512Half digests.
+- Expanded Gate C fixture parity to full snapshot checks for stable fields and cross-fixture ledger seq/hash consistency across `server_info`, `account_info`, and `current_ledger`.
+- Tightened Gate D for richer evidence with profile metadata, explicit fail reason artifacts, endpoint health fields, and trend-point artifact output.
+- Raised Gate E with profile-based fuzz budgets (`pr` vs `nightly`), seeded adversarial corpus markers, crash-free marker enforcement, and timing/budget artifacts.
 
 ## Sign-Off
 - Engineering Lead: pending

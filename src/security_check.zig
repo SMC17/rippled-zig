@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("build_options");
 const security = @import("security.zig");
 const ledger = @import("ledger.zig");
 const transaction = @import("transaction.zig");
@@ -83,12 +84,28 @@ pub fn main() !void {
     const result = try processor.validateTransaction(&tx, &state);
     if (result != .tem_malformed) return error.InvalidFeeAccepted;
 
-    // Budgeted mutational fuzz loop over input validators.
+    // Seeded adversarial corpus + budgeted mutational fuzz loop over input validators.
     var prng = std.Random.DefaultPrng.init(0xC0DEC0DE);
     const random = prng.random();
-    const fuzz_cases_target: u32 = 25000;
+    const fuzz_cases_target: u32 = build_options.gate_e_fuzz_cases;
+    const corpus = [_][]const u8{
+        "", // empty
+        "0", // small numeric
+        "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", // long hex
+        "abc\x00def", // null byte injection
+        "999999999999999999999999", // out-of-range numeric
+        "DROP TABLE accounts;", // SQL-like payload
+        "../../../../etc/passwd", // path traversal-like payload
+        "{\"json\":\"payload\"}", // structured input
+    };
     var fuzz_cases_executed: u32 = 0;
     var buf: [64]u8 = undefined;
+
+    for (corpus) |seed| {
+        _ = security.Security.InputValidator.validateString(seed, 64) catch {};
+        _ = security.Security.InputValidator.validateHex(seed) catch {};
+        _ = security.Security.InputValidator.validateNumber(seed, 0, 1000) catch {};
+    }
 
     while (fuzz_cases_executed < fuzz_cases_target) : (fuzz_cases_executed += 1) {
         const len = random.uintAtMost(usize, buf.len);
@@ -99,5 +116,8 @@ pub fn main() !void {
         _ = security.Security.InputValidator.validateNumber("123", 0, 1000) catch {};
     }
 
+    std.debug.print("FUZZ_PROFILE: {s}\n", .{build_options.gate_e_profile});
+    std.debug.print("CORPUS_SEEDS: {d}\n", .{corpus.len});
+    std.debug.print("CRASH_FREE: 1\n", .{});
     std.debug.print("FUZZ_CASES: {d}\n", .{fuzz_cases_executed});
 }

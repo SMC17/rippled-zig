@@ -11,6 +11,24 @@ min_ledger_seq="${GATE_D_MIN_LEDGER_SEQ:-1000000}"
 expected_network_id="${GATE_D_EXPECTED_NETWORK_ID:-1}"
 max_base_fee="${GATE_D_MAX_BASE_FEE:-100000}"
 min_base_fee="${GATE_D_MIN_BASE_FEE:-10}"
+run_profile="${GATE_D_PROFILE:-default}"
+ts_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+fail() {
+  local reason="$1"
+  local escaped_reason="${reason//\"/\\\"}"
+  echo "$reason" | tee "$artifact_dir/failure.txt"
+  cat > "$artifact_dir/testnet-conformance.json" <<JSON
+{
+  "gate": "D",
+  "status": "fail",
+  "reason": "$escaped_reason",
+  "profile": "$run_profile",
+  "timestamp_utc": "$ts_iso"
+}
+JSON
+  exit 1
+}
 
 if [[ -z "$rpc_url" || -z "$ws_url" ]]; then
   if [[ "${GATE_D_ALLOW_SKIP_NO_SECRETS:-false}" == "true" ]]; then
@@ -18,28 +36,26 @@ if [[ -z "$rpc_url" || -z "$ws_url" ]]; then
 {
   "gate": "D",
   "status": "skipped",
-  "reason": "missing TESTNET_RPC_URL/TESTNET_WS_URL"
+  "reason": "missing TESTNET_RPC_URL/TESTNET_WS_URL",
+  "profile": "$run_profile",
+  "timestamp_utc": "$ts_iso"
 }
 JSON
     exit 0
   fi
-  echo "TESTNET_RPC_URL and TESTNET_WS_URL are required" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "TESTNET_RPC_URL and TESTNET_WS_URL are required"
 fi
 
 if [[ ! "$rpc_url" =~ ^https:// ]]; then
-  echo "TESTNET_RPC_URL must use https:// scheme" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "TESTNET_RPC_URL must use https:// scheme"
 fi
 if [[ ! "$ws_url" =~ ^wss:// ]]; then
-  echo "TESTNET_WS_URL must use wss:// scheme" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "TESTNET_WS_URL must use wss:// scheme"
 fi
 
 for cmd in curl jq awk; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "$cmd is required" | tee "$artifact_dir/failure.txt"
-    exit 1
+    fail "$cmd is required"
   fi
 done
 
@@ -67,13 +83,11 @@ post_json() {
   latency="$(awk '{print $2}' "$metrics_file")"
 
   if [[ "$http_code" != "200" ]]; then
-    echo "HTTP failure for payload: $payload" | tee "$artifact_dir/failure.txt"
-    exit 1
+    fail "HTTP failure for payload: $payload"
   fi
 
   if ! awk -v got="$latency" -v max="$max_latency_s" 'BEGIN { exit !(got+0 <= max+0) }'; then
-    echo "Latency threshold exceeded: ${latency}s > ${max_latency_s}s" | tee "$artifact_dir/failure.txt"
-    exit 1
+    fail "Latency threshold exceeded: ${latency}s > ${max_latency_s}s"
   fi
 }
 
@@ -89,62 +103,51 @@ base_fee="$(jq -r '.result.drops.base_fee' "$artifact_dir/fee.json")"
 fee_status="$(jq -r '.result.status' "$artifact_dir/fee.json")"
 
 if [[ -z "$validated_seq" || "$validated_seq" == "null" ]]; then
-  echo "Missing validated ledger sequence" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "Missing validated ledger sequence"
 fi
 
 if ! [[ "$validated_seq" =~ ^[0-9]+$ ]]; then
-  echo "Non-numeric validated ledger sequence: $validated_seq" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "Non-numeric validated ledger sequence: $validated_seq"
 fi
 
 if (( validated_seq < min_ledger_seq )); then
-  echo "Validated ledger sequence too low: $validated_seq < $min_ledger_seq" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "Validated ledger sequence too low: $validated_seq < $min_ledger_seq"
 fi
 
 if ! [[ "$validated_hash" =~ ^[A-F0-9]{64}$ ]]; then
-  echo "Invalid validated ledger hash format" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "Invalid validated ledger hash format"
 fi
 
 if [[ "$server_info_status" != "success" ]]; then
-  echo "server_info status is not success: $server_info_status" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "server_info status is not success: $server_info_status"
 fi
 
 if ! [[ "$network_id" =~ ^[0-9]+$ ]]; then
-  echo "Non-numeric network_id: $network_id" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "Non-numeric network_id: $network_id"
 fi
 
 if (( network_id != expected_network_id )); then
-  echo "Unexpected network_id: $network_id (expected $expected_network_id)" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "Unexpected network_id: $network_id (expected $expected_network_id)"
 fi
 
 case "$server_state" in
   full|proposing|validating|syncing)
     ;;
   *)
-    echo "Unexpected server_state: $server_state" | tee "$artifact_dir/failure.txt"
-    exit 1
+    fail "Unexpected server_state: $server_state"
     ;;
 esac
 
 if ! [[ "$base_fee" =~ ^[0-9]+$ ]]; then
-  echo "Non-numeric base_fee: $base_fee" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "Non-numeric base_fee: $base_fee"
 fi
 
 if [[ "$fee_status" != "success" ]]; then
-  echo "fee status is not success: $fee_status" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "fee status is not success: $fee_status"
 fi
 
 if (( base_fee < min_base_fee || base_fee > max_base_fee )); then
-  echo "base_fee outside threshold: $base_fee (expected $min_base_fee..$max_base_fee)" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "base_fee outside threshold: $base_fee (expected $min_base_fee..$max_base_fee)"
 fi
 
 ledger_payload="{\"method\":\"ledger\",\"params\":[{\"ledger_index\":$validated_seq,\"transactions\":false,\"expand\":false}] }"
@@ -155,28 +158,23 @@ ledger_hash="$(jq -r '.result.ledger.ledger_hash // .result.ledger_hash' "$artif
 ledger_status="$(jq -r '.result.status // \"success\"' "$artifact_dir/ledger.json")"
 
 if ! [[ "$ledger_seq" =~ ^[0-9]+$ ]]; then
-  echo "Non-numeric ledger sequence returned from ledger method: $ledger_seq" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "Non-numeric ledger sequence returned from ledger method: $ledger_seq"
 fi
 
 if (( ledger_seq != validated_seq )); then
-  echo "Cross-endpoint mismatch: server_info seq=$validated_seq ledger seq=$ledger_seq" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "Cross-endpoint mismatch: server_info seq=$validated_seq ledger seq=$ledger_seq"
 fi
 
 if ! [[ "$ledger_hash" =~ ^[A-F0-9]{64}$ ]]; then
-  echo "Invalid ledger hash format from ledger method" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "Invalid ledger hash format from ledger method"
 fi
 
 if [[ "$ledger_status" != "success" ]]; then
-  echo "ledger status is not success: $ledger_status" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "ledger status is not success: $ledger_status"
 fi
 
 if [[ "$ledger_hash" != "$validated_hash" ]]; then
-  echo "Cross-endpoint mismatch: server_info hash != ledger hash" | tee "$artifact_dir/failure.txt"
-  exit 1
+  fail "Cross-endpoint mismatch: server_info hash != ledger hash"
 fi
 
 server_latency="$(awk '{print $2}' "$artifact_dir/server_info.metrics")"
@@ -187,6 +185,8 @@ cat > "$artifact_dir/testnet-conformance.json" <<JSON
 {
   "gate": "D",
   "status": "pass",
+  "profile": "$run_profile",
+  "timestamp_utc": "$ts_iso",
   "thresholds": {
     "max_latency_s": $max_latency_s,
     "min_ledger_seq": $min_ledger_seq,
@@ -199,6 +199,10 @@ cat > "$artifact_dir/testnet-conformance.json" <<JSON
     "ws_url": "$ws_url"
   },
   "observed": {
+    "endpoint_health": {
+      "rpc_https": true,
+      "ws_wss": true
+    },
     "server_state": "$server_state",
     "validated_ledger_seq": $validated_seq,
     "validated_ledger_hash": "$validated_hash",
@@ -208,6 +212,21 @@ cat > "$artifact_dir/testnet-conformance.json" <<JSON
       "fee": $fee_latency,
       "ledger": $ledger_latency
     }
+  }
+}
+JSON
+
+cat > "$artifact_dir/trend-point.json" <<JSON
+{
+  "timestamp_utc": "$ts_iso",
+  "profile": "$run_profile",
+  "status": "pass",
+  "validated_ledger_seq": $validated_seq,
+  "base_fee": $base_fee,
+  "latency_s": {
+    "server_info": $server_latency,
+    "fee": $fee_latency,
+    "ledger": $ledger_latency
   }
 }
 JSON

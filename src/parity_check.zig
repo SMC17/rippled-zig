@@ -5,12 +5,21 @@ const transaction = @import("transaction.zig");
 const types = @import("types.zig");
 
 const Fixture = struct {
+    server_build_version: []const u8,
+    server_state: []const u8,
+    server_peers: i64,
     server_hash: []const u8,
     server_seq: i64,
+    fee_status: []const u8,
     fee_base: []const u8,
     fee_median: []const u8,
+    fee_minimum: []const u8,
     fee_ledger_index: i64,
+    ledger_hash: []const u8,
+    ledger_index: i64,
+    account_status: []const u8,
     account_error_code: i64,
+    account_validated: bool,
 };
 
 fn getObject(value: std.json.Value) !std.json.ObjectMap {
@@ -34,6 +43,14 @@ fn getString(value: std.json.Value) ![]const u8 {
 fn getInteger(value: std.json.Value) !i64 {
     return switch (value) {
         .integer => |n| n,
+        else => error.ExpectedInteger,
+    };
+}
+
+fn getIntegerFlexible(value: std.json.Value) !i64 {
+    return switch (value) {
+        .integer => |n| n,
+        .string => |s| try std.fmt.parseInt(i64, s, 10),
         else => error.ExpectedInteger,
     };
 }
@@ -124,6 +141,15 @@ fn assertServerFixture(payload: []const u8, allocator: std.mem.Allocator, fixtur
     const network_id = try getInteger(try getField(info, "network_id"));
     if (network_id != 1) return error.UnexpectedFixtureNetworkId;
 
+    const build_version = try getString(try getField(info, "build_version"));
+    if (!std.mem.eql(u8, build_version, fixture.server_build_version)) return error.ServerFixtureBuildVersionMismatch;
+
+    const server_state = try getString(try getField(info, "server_state"));
+    if (!std.mem.eql(u8, server_state, fixture.server_state)) return error.ServerFixtureStateMismatch;
+
+    const peers = try getInteger(try getField(info, "peers"));
+    if (peers != fixture.server_peers) return error.ServerFixturePeersMismatch;
+
     const hash = try getString(try getField(validated, "hash"));
     if (!std.mem.eql(u8, hash, fixture.server_hash)) return error.ServerFixtureHashMismatch;
 
@@ -140,7 +166,7 @@ fn assertFeeFixture(payload: []const u8, allocator: std.mem.Allocator, fixture: 
     const drops = try getObject(try getField(result, "drops"));
 
     const status = try getString(try getField(result, "status"));
-    if (!std.mem.eql(u8, status, "success")) return error.UnexpectedFixtureStatus;
+    if (!std.mem.eql(u8, status, fixture.fee_status)) return error.UnexpectedFixtureStatus;
 
     const base_fee = try getString(try getField(drops, "base_fee"));
     if (!std.mem.eql(u8, base_fee, fixture.fee_base)) return error.FeeFixtureBaseMismatch;
@@ -148,7 +174,10 @@ fn assertFeeFixture(payload: []const u8, allocator: std.mem.Allocator, fixture: 
     const median_fee = try getString(try getField(drops, "median_fee"));
     if (!std.mem.eql(u8, median_fee, fixture.fee_median)) return error.FeeFixtureMedianMismatch;
 
-    const ledger_index = try getInteger(try getField(result, "ledger_current_index"));
+    const minimum_fee = try getString(try getField(drops, "minimum_fee"));
+    if (!std.mem.eql(u8, minimum_fee, fixture.fee_minimum)) return error.FeeFixtureMinimumMismatch;
+
+    const ledger_index = try getIntegerFlexible(try getField(result, "ledger_current_index"));
     if (ledger_index != fixture.fee_ledger_index) return error.FeeFixtureLedgerIndexMismatch;
 }
 
@@ -166,22 +195,58 @@ fn assertAccountFixture(payload: []const u8, allocator: std.mem.Allocator, fixtu
     }
 
     const status = try getString(try getField(result, "status"));
-    if (!std.mem.eql(u8, status, "error")) return error.AccountFixtureExpectedError;
+    if (!std.mem.eql(u8, status, fixture.account_status)) return error.AccountFixtureExpectedError;
 
     const error_code = try getInteger(try getField(result, "error_code"));
     if (error_code != fixture.account_error_code) return error.AccountFixtureErrorCodeMismatch;
+
+    const validated = try getBool(try getField(result, "validated"));
+    if (validated != fixture.account_validated) return error.AccountFixtureValidatedMismatch;
+
+    const account_ledger_hash = try getString(try getField(result, "ledger_hash"));
+    if (!std.mem.eql(u8, account_ledger_hash, fixture.ledger_hash)) return error.AccountFixtureLedgerHashMismatch;
+
+    const account_ledger_index = try getIntegerFlexible(try getField(result, "ledger_index"));
+    if (account_ledger_index != fixture.ledger_index) return error.AccountFixtureLedgerIndexMismatch;
+}
+
+fn assertLedgerFixture(payload: []const u8, allocator: std.mem.Allocator, fixture: Fixture) !void {
+    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, payload, .{});
+    defer parsed.deinit();
+
+    const root = try getObject(parsed.value);
+    const result = try getObject(try getField(root, "result"));
+    const ledger_obj = try getObject(try getField(result, "ledger"));
+
+    const status = try getString(try getField(result, "status"));
+    if (!std.mem.eql(u8, status, "success")) return error.LedgerFixtureStatusMismatch;
+
+    const hash = try getString(try getField(ledger_obj, "ledger_hash"));
+    if (!std.mem.eql(u8, hash, fixture.ledger_hash)) return error.LedgerFixtureHashMismatch;
+
+    const index = try getIntegerFlexible(try getField(ledger_obj, "ledger_index"));
+    if (index != fixture.ledger_index) return error.LedgerFixtureIndexMismatch;
 }
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
     const fixture = Fixture{
+        .server_build_version = "2.6.1-rc2",
+        .server_state = "full",
+        .server_peers = 90,
         .server_hash = "FB90529615FA52790E2B2E24C32A482DBF9F969C3FDC2726ED0A64A40962BF00",
         .server_seq = 11900686,
+        .fee_status = "success",
         .fee_base = "10",
         .fee_median = "7500",
+        .fee_minimum = "10",
         .fee_ledger_index = 11900687,
+        .ledger_hash = "FB90529615FA52790E2B2E24C32A482DBF9F969C3FDC2726ED0A64A40962BF00",
+        .ledger_index = 11900686,
+        .account_status = "error",
         .account_error_code = 35,
+        .account_validated = true,
     };
 
     var lm = try ledger.LedgerManager.init(allocator);
@@ -224,8 +289,11 @@ pub fn main() !void {
     defer allocator.free(fixture_fee);
     const fixture_acct = try std.fs.cwd().readFileAlloc(allocator, "test_data/account_info.json", 512 * 1024);
     defer allocator.free(fixture_acct);
+    const fixture_ledger = try std.fs.cwd().readFileAlloc(allocator, "test_data/current_ledger.json", 2 * 1024 * 1024);
+    defer allocator.free(fixture_ledger);
 
     try assertServerFixture(fixture_server, allocator, fixture);
     try assertFeeFixture(fixture_fee, allocator, fixture);
     try assertAccountFixture(fixture_acct, allocator, fixture);
+    try assertLedgerFixture(fixture_ledger, allocator, fixture);
 }

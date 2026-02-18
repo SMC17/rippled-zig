@@ -4,9 +4,13 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const use_secp256k1 = b.option(bool, "secp256k1", "Link against libsecp256k1 for ECDSA verification") orelse false;
+    const gate_e_fuzz_cases = b.option(u32, "gate_e_fuzz_cases", "Gate E fuzz case budget") orelse 25000;
+    const gate_e_profile = b.option([]const u8, "gate_e_profile", "Gate E profile label") orelse "pr";
 
     const build_options = b.addOptions();
     build_options.addOption(bool, "has_secp256k1", use_secp256k1);
+    build_options.addOption(u32, "gate_e_fuzz_cases", gate_e_fuzz_cases);
+    build_options.addOption([]const u8, "gate_e_profile", gate_e_profile);
 
     // Create main module
     const main_module = b.createModule(.{

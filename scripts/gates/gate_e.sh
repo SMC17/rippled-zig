@@ -3,8 +3,14 @@ set -euo pipefail
 
 artifact_dir="${1:-artifacts/gate-e}"
 mkdir -p "$artifact_dir"
-min_fuzz_cases="${GATE_E_MIN_FUZZ_CASES:-25000}"
-max_runtime_s="${GATE_E_MAX_RUNTIME_S:-20}"
+profile="${GATE_E_PROFILE:-pr}"
+if [[ "$profile" == "nightly" ]]; then
+  min_fuzz_cases="${GATE_E_MIN_FUZZ_CASES:-100000}"
+  max_runtime_s="${GATE_E_MAX_RUNTIME_S:-60}"
+else
+  min_fuzz_cases="${GATE_E_MIN_FUZZ_CASES:-25000}"
+  max_runtime_s="${GATE_E_MAX_RUNTIME_S:-20}"
+fi
 have_rg=false
 if command -v rg >/dev/null 2>&1; then
   have_rg=true
@@ -39,7 +45,7 @@ dur_todo_scan=0
 # Security-focused suite through build graph (injects build options).
 start_ts="$(now_s)"
 step_start="$(now_s)"
-zig build gate-e 2>&1 | tee "$artifact_dir/security-gate.log"
+zig build gate-e -Dgate_e_fuzz_cases="$min_fuzz_cases" -Dgate_e_profile="$profile" 2>&1 | tee "$artifact_dir/security-gate.log"
 dur_build=$(( $(now_s) - step_start ))
 end_ts="$(now_s)"
 elapsed_s=$((end_ts - start_ts))
@@ -52,6 +58,21 @@ fi
 fuzz_cases="$(extract_matches "FUZZ_CASES: [0-9]+" "$artifact_dir/security-gate.log" | awk '{print $2}' | tail -n 1 || true)"
 if [[ -z "${fuzz_cases}" ]]; then
   echo "FUZZ_CASES marker missing from security gate output" | tee "$artifact_dir/failure.txt"
+  exit 1
+fi
+corpus_seeds="$(extract_matches "CORPUS_SEEDS: [0-9]+" "$artifact_dir/security-gate.log" | awk '{print $2}' | tail -n 1 || true)"
+if [[ -z "${corpus_seeds}" ]]; then
+  echo "CORPUS_SEEDS marker missing from security gate output" | tee "$artifact_dir/failure.txt"
+  exit 1
+fi
+crash_free="$(extract_matches "CRASH_FREE: [01]" "$artifact_dir/security-gate.log" | awk '{print $2}' | tail -n 1 || true)"
+if [[ "${crash_free}" != "1" ]]; then
+  echo "CRASH_FREE marker missing or failing" | tee "$artifact_dir/failure.txt"
+  exit 1
+fi
+fuzz_profile="$(extract_matches "FUZZ_PROFILE: [a-z]+" "$artifact_dir/security-gate.log" | awk '{print $2}' | tail -n 1 || true)"
+if [[ -z "${fuzz_profile}" ]]; then
+  echo "FUZZ_PROFILE marker missing from security gate output" | tee "$artifact_dir/failure.txt"
   exit 1
 fi
 
@@ -96,7 +117,10 @@ cat > "$artifact_dir/security-review.md" <<MD
 - panic() call sites in src: $panic_count
 - security TODO/FIXME findings in `src/security*.zig`: 0
 - gate runtime: ${elapsed_s}s (max ${max_runtime_s}s)
+- fuzz profile: ${fuzz_profile}
 - fuzz cases executed: ${fuzz_cases} (min ${min_fuzz_cases})
+- adversarial seed corpus entries: ${corpus_seeds}
+- crash free: ${crash_free}
 - timing breakdown:
   - build gate-e: ${dur_build}s
   - runtime-safety scan: ${dur_runtime_safety}s
@@ -109,10 +133,12 @@ MD
 cat > "$artifact_dir/fuzz-summary.txt" <<TXT
 Fuzzing budget satisfied.
 Executed ${fuzz_cases} mutational input-validation cases.
+Profile: ${fuzz_profile}
+Seed corpus entries: ${corpus_seeds}
 TXT
 
 cat > "$artifact_dir/summary.json" <<JSON
-{"gate":"E","status":"pass","panic_sites":$panic_count,"runtime_s":$elapsed_s,"fuzz_cases":$fuzz_cases}
+{"gate":"E","status":"pass","profile":"$fuzz_profile","panic_sites":$panic_count,"runtime_s":$elapsed_s,"fuzz_cases":$fuzz_cases,"corpus_seeds":$corpus_seeds,"crash_free":$crash_free}
 JSON
 
 cat > "$artifact_dir/timings.json" <<JSON
