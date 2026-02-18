@@ -3,9 +3,9 @@
 Canonical status for this repository. If any other file conflicts with this document, this document is authoritative.
 
 Last Updated: 2026-02-18
-Commit: b1e0183 (hardening cycle baseline), with follow-up gate stability fixes through HEAD
+Commit: dd300b2 (quality baseline merged to main), with follow-up cleanup in progress
 Status Owner: Engineering
-Scope: `hardening/quality-gates` PR to `main`
+Scope: `main`
 
 ## Policy
 - No unqualified percentage claims.
@@ -41,7 +41,7 @@ Scope: `hardening/quality-gates` PR to `main`
 | Claim ID | Claim | Scope | Evidence Type | Evidence Path | Commit SHA | Date | Reviewer | Result |
 |---|---|---|---|---|---|---|---|---|
 | C-001 | Toolchain pinned to Zig 0.15.1 | Gate A | CI config + tool pin | `.github/workflows/ci.yml`, `.tool-versions` | working tree | 2026-02-18 | pending | PASS |
-| C-002 | Quality gates A/B/C/E are required and green in PR flow | A/B/C/E | CI workflow + run history | `https://github.com/SMC17/rippled-zig/actions/workflows/quality-gates.yml?query=branch%3Ahardening%2Fquality-gates` | working tree | 2026-02-18 | pending | PASS |
+| C-002 | Quality gates A/B/C/E are required and green in PR flow | A/B/C/E | CI workflow + run history | `https://github.com/SMC17/rippled-zig/actions/workflows/quality-gates.yml?query=branch%3Amain` | working tree | 2026-02-18 | pending | PASS |
 | C-003 | Gate D supports strict live conformance and explicit skip artifact mode | Gate D | gate script + artifacts | `scripts/gates/gate_d.sh`, quality-gates artifacts | working tree | 2026-02-18 | pending | PASS |
 | C-004 | Gate E enforces security checks plus fuzz budget/runtime thresholds | Gate E | gate script + checker | `scripts/gates/gate_e.sh`, `src/security_check.zig` | working tree | 2026-02-18 | pending | PASS |
 
