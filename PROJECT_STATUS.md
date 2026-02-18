@@ -20,6 +20,7 @@ Scope: `main`
   - Gate C (Cross-Impl Parity vs rippled): `PASS`
   - Gate D (Live Testnet Conformance): `PASS` (or explicit `SKIPPED` with artifact when secrets are absent)
   - Gate E (Security/Fuzz/Static): `PASS`
+  - Sim (Deterministic Local Cluster): `PASS`
 
 ## Weekly Gate Results
 | Week Of | Gate A | Gate B | Gate C | Gate D | Gate E | Notes |
@@ -160,6 +161,10 @@ Pass Criteria:
 - Added deterministic local multi-node simulation harness:
   - script: `scripts/sim/run_local_cluster.sh`,
   - artifacts: `simulation-config.json`, `round-events.ndjson`, `round-summary.ndjson`, `simulation-summary.json`, `simulation-report.md`.
+- Added dedicated CI simulation gate in `quality-gates` workflow:
+  - job: `Sim - Deterministic Local Cluster`,
+  - runs on every PR/push and uploads simulation artifacts,
+  - release summary now hard-fails when simulation gate is not `success`.
 
 ## Sign-Off
 - Engineering Lead: pending
