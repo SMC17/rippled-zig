@@ -4,8 +4,8 @@ set -euo pipefail
 artifact_dir="${1:-artifacts/gate-b}"
 mkdir -p "$artifact_dir"
 
-# Deterministic protocol/hash suite.
-zig test src/determinism_gate.zig 2>&1 | tee "$artifact_dir/determinism.log"
+# Deterministic protocol/hash suite through build graph (injects build options).
+zig build gate-b 2>&1 | tee "$artifact_dir/determinism.log"
 
 # Deterministic fixture manifest for tracked test vectors.
 if command -v shasum >/dev/null 2>&1; then

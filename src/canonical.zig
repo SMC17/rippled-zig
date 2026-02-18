@@ -121,7 +121,7 @@ pub const CanonicalSerializer = struct {
         std.mem.sort(FieldOrder, self.fields.items, {}, FieldOrder.lessThan);
 
         // Build final output
-        var output = std.ArrayList(u8).init(self.allocator);
+        var output = try std.ArrayList(u8).initCapacity(self.allocator, self.fields.items.len * 16);
         errdefer output.deinit(self.allocator);
 
         for (self.fields.items) |field| {

@@ -4,8 +4,8 @@ set -euo pipefail
 artifact_dir="${1:-artifacts/gate-e}"
 mkdir -p "$artifact_dir"
 
-# Security-focused suite.
-zig test src/security_gate.zig 2>&1 | tee "$artifact_dir/security-gate.log"
+# Security-focused suite through build graph (injects build options).
+zig build gate-e 2>&1 | tee "$artifact_dir/security-gate.log"
 
 # Static hygiene checks.
 if rg -n "@setRuntimeSafety\(false\)" src tests > "$artifact_dir/runtime-safety-violations.txt"; then

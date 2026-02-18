@@ -4,8 +4,8 @@ set -euo pipefail
 artifact_dir="${1:-artifacts/gate-c}"
 mkdir -p "$artifact_dir"
 
-# Parity-focused suite against captured real XRPL fixtures.
-zig test src/parity_gate.zig 2>&1 | tee "$artifact_dir/parity.log"
+# Parity-focused suite through build graph (injects build options).
+zig build gate-c 2>&1 | tee "$artifact_dir/parity.log"
 
 # Basic fixture contract checks (shape-level parity with rippled responses).
 jq -e '.result.info.validated_ledger.seq != null' test_data/server_info.json > /dev/null
