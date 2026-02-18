@@ -10,6 +10,14 @@ fn parseHex32(hex: []const u8) ![32]u8 {
     return out;
 }
 
+fn parseHexAlloc(allocator: std.mem.Allocator, hex: []const u8) ![]u8 {
+    if (hex.len % 2 != 0) return error.InvalidHexLength;
+    const out = try allocator.alloc(u8, hex.len / 2);
+    errdefer allocator.free(out);
+    _ = try std.fmt.hexToBytes(out, hex);
+    return out;
+}
+
 fn hashFixtureFile(path: []const u8, allocator: std.mem.Allocator) ![32]u8 {
     const data = try std.fs.cwd().readFileAlloc(allocator, path, 2 * 1024 * 1024);
     defer allocator.free(data);
@@ -41,6 +49,15 @@ pub fn main() !void {
     defer allocator.free(out_b);
 
     if (!std.mem.eql(u8, out_a, out_b)) return error.NonDeterministicCanonicalOrder;
+
+    const expected_serialized_hex = "120000240000000168000000000000000a";
+    const expected_serialized = try parseHexAlloc(allocator, expected_serialized_hex);
+    defer allocator.free(expected_serialized);
+    if (!std.mem.eql(u8, out_a, expected_serialized)) return error.CanonicalVectorMismatch;
+
+    const serialized_hash = crypto.Hash.sha512Half(out_a);
+    const expected_hash = try parseHex32("5de074b79ec3d36ebd7e704c214cdbf464b74d2e45794f5f7cd24832fb654c90");
+    if (!std.mem.eql(u8, &serialized_hash, &expected_hash)) return error.CanonicalHashVectorMismatch;
 
     const fixtures = [_]struct { path: []const u8, expected_sha512_half_hex: []const u8 }{
         .{ .path = "test_data/current_ledger.json", .expected_sha512_half_hex = "e6fcf8db7b7f53f4cc854951603299702d142b32d776403f15b7e71e6db8c73c" },

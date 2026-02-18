@@ -82,4 +82,22 @@ pub fn main() !void {
 
     const result = try processor.validateTransaction(&tx, &state);
     if (result != .tem_malformed) return error.InvalidFeeAccepted;
+
+    // Budgeted mutational fuzz loop over input validators.
+    var prng = std.Random.DefaultPrng.init(0xC0DEC0DE);
+    const random = prng.random();
+    const fuzz_cases_target: u32 = 25000;
+    var fuzz_cases_executed: u32 = 0;
+    var buf: [64]u8 = undefined;
+
+    while (fuzz_cases_executed < fuzz_cases_target) : (fuzz_cases_executed += 1) {
+        const len = random.uintAtMost(usize, buf.len);
+        random.bytes(buf[0..len]);
+
+        _ = security.Security.InputValidator.validateString(buf[0..len], 64) catch {};
+        _ = security.Security.InputValidator.validateHex(buf[0..len]) catch {};
+        _ = security.Security.InputValidator.validateNumber("123", 0, 1000) catch {};
+    }
+
+    std.debug.print("FUZZ_CASES: {d}\n", .{fuzz_cases_executed});
 }
