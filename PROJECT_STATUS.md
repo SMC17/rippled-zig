@@ -107,6 +107,9 @@ Pass Criteria:
   - amount-like drops encoding vector,
   - mixed-field ordering vector including `Hash256`,
   - fixed expected serialized bytes and SHA-512Half digests.
+- Added Gate B vector evidence manifest:
+  - `src/determinism_check.zig` now emits `VECTOR_HASH` lines for each deterministic vector,
+  - `scripts/gates/gate_b.sh` now fails if vector evidence count drops below expected baseline.
 - Expanded Gate C fixture parity to full snapshot checks for stable fields and cross-fixture ledger seq/hash consistency across `server_info`, `account_info`, and `current_ledger`.
 - Added Gate C secp256k1 fixture evidence checks from `current_ledger.json`:
   - fixed `hash` / `SigningPubKey` / `TxnSignature` values,

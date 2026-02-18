@@ -30,6 +30,10 @@ fn fillIncrementing(comptime N: usize) [N]u8 {
     return out;
 }
 
+fn recordVector(name: []const u8, hash: [32]u8) void {
+    std.debug.print("VECTOR_HASH {s} {s}\n", .{ name, std.fmt.fmtSliceHexLower(hash[0..]) });
+}
+
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
@@ -64,6 +68,7 @@ pub fn main() !void {
     const serialized_hash = crypto.Hash.sha512Half(out_a);
     const expected_hash = try parseHex32("5de074b79ec3d36ebd7e704c214cdbf464b74d2e45794f5f7cd24832fb654c90");
     if (!std.mem.eql(u8, &serialized_hash, &expected_hash)) return error.CanonicalHashVectorMismatch;
+    recordVector("canonical_u16_u32_u64", serialized_hash);
 
     // Additional canonical vector including AccountID field.
     const account_id = [_]u8{
@@ -89,6 +94,7 @@ pub fn main() !void {
     const serialized_hash_2 = crypto.Hash.sha512Half(out_c);
     const expected_hash_2 = try parseHex32("09bd8a5ed82ddae1eeba4eb1a8ad4083ad59c6ece4b3e6443517eab7b85f6e2f");
     if (!std.mem.eql(u8, &serialized_hash_2, &expected_hash_2)) return error.CanonicalHashVector2Mismatch;
+    recordVector("canonical_with_account", serialized_hash_2);
 
     // Fourth canonical vector: amount-like drops value encoded as UInt64 field.
     // Provenance: expected bytes + hash generated from deterministic encoded output.
@@ -105,6 +111,7 @@ pub fn main() !void {
     const amount_hash = crypto.Hash.sha512Half(out_amount);
     const expected_amount_hash = try parseHex32("dab6b224b0a9b548231ce1e9a60f6be66a5a211f736f82daba7be401f9edb6d5");
     if (!std.mem.eql(u8, &amount_hash, &expected_amount_hash)) return error.AmountHashVectorMismatch;
+    recordVector("amount_like_drops", amount_hash);
 
     // Fifth canonical vector: mixed field ordering with Hash256 + UInt fields.
     // Provenance: expected bytes + hash generated from deterministic encoded output.
@@ -125,6 +132,7 @@ pub fn main() !void {
     const mixed_hash = crypto.Hash.sha512Half(out_mixed);
     const expected_mixed_hash = try parseHex32("2482975f8c1f773e1aa0f45528df18834b0e08a1300105d668caedb8166f806f");
     if (!std.mem.eql(u8, &mixed_hash, &expected_mixed_hash)) return error.MixedHashVectorMismatch;
+    recordVector("mixed_hash256_fields", mixed_hash);
 
     // Third canonical vector: VL boundary encoding at 192/193 bytes.
     const vl_192_payload = fillIncrementing(192);
@@ -139,6 +147,7 @@ pub fn main() !void {
     const out_vl_192_hash = crypto.Hash.sha512Half(out_vl_192);
     const expected_vl_192_hash = try parseHex32("2d12f8dafee6a41c108376601196fb2e30a20f2c566ddf7897cd34149906b19e");
     if (!std.mem.eql(u8, &out_vl_192_hash, &expected_vl_192_hash)) return error.VL192HashMismatch;
+    recordVector("vl_192_boundary", out_vl_192_hash);
 
     const vl_193_payload = fillIncrementing(193);
     var vl_193 = try canonical.CanonicalSerializer.init(allocator);
@@ -152,6 +161,7 @@ pub fn main() !void {
     const out_vl_193_hash = crypto.Hash.sha512Half(out_vl_193);
     const expected_vl_193_hash = try parseHex32("31ac058dc1677933d75d3c1cb878a09db093a058e0262728366e93ba1b39111a");
     if (!std.mem.eql(u8, &out_vl_193_hash, &expected_vl_193_hash)) return error.VL193HashMismatch;
+    recordVector("vl_193_boundary", out_vl_193_hash);
 
     // Sixth canonical vector: VL boundary encoding at 12480/12481 bytes.
     // Provenance: expected hashes computed from encoded bytes using SHA-512Half.
@@ -167,6 +177,7 @@ pub fn main() !void {
     const out_vl_12480_hash = crypto.Hash.sha512Half(out_vl_12480);
     const expected_vl_12480_hash = try parseHex32("a96ff359d65cb919b763174f7f74b4bd0d9a8b4a2ecc6dbaf250b94da3dee051");
     if (!std.mem.eql(u8, &out_vl_12480_hash, &expected_vl_12480_hash)) return error.VL12480HashMismatch;
+    recordVector("vl_12480_boundary", out_vl_12480_hash);
 
     const vl_12481_payload = fillIncrementing(12481);
     var vl_12481 = try canonical.CanonicalSerializer.init(allocator);
@@ -180,6 +191,7 @@ pub fn main() !void {
     const out_vl_12481_hash = crypto.Hash.sha512Half(out_vl_12481);
     const expected_vl_12481_hash = try parseHex32("ef21ca47bc4b5bb1783515b38ec7bf7f5033f62edd7f4ad153092b91dbef886f");
     if (!std.mem.eql(u8, &out_vl_12481_hash, &expected_vl_12481_hash)) return error.VL12481HashMismatch;
+    recordVector("vl_12481_boundary", out_vl_12481_hash);
 
     const fixtures = [_]struct { path: []const u8, expected_sha512_half_hex: []const u8 }{
         .{ .path = "test_data/current_ledger.json", .expected_sha512_half_hex = "e6fcf8db7b7f53f4cc854951603299702d142b32d776403f15b7e71e6db8c73c" },
