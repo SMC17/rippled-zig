@@ -84,6 +84,35 @@ pub fn main() !void {
     const expected_hash_2 = try parseHex32("d158b88aafca61216f5eac68601811e8da81bf89d9f2577426570de005d7611b");
     if (!std.mem.eql(u8, &serialized_hash_2, &expected_hash_2)) return error.CanonicalHashVector2Mismatch;
 
+    // Third canonical vector: VL boundary encoding at 192/193 bytes.
+    var vl_192_payload: [192]u8 = undefined;
+    for (&vl_192_payload, 0..) |*b, i| b.* = @intCast(i);
+    var vl_192 = try canonical.CanonicalSerializer.init(allocator);
+    defer vl_192.deinit();
+    try vl_192.addVL(3, &vl_192_payload);
+    const out_vl_192 = try vl_192.finish();
+    defer allocator.free(out_vl_192);
+    if (out_vl_192.len != 194) return error.VL192UnexpectedLength;
+    if (out_vl_192[0] != 0x73 or out_vl_192[1] != 0xC0) return error.VL192UnexpectedPrefix;
+    if (!std.mem.eql(u8, out_vl_192[2..], &vl_192_payload)) return error.VL192PayloadMismatch;
+    const out_vl_192_hash = crypto.Hash.sha512Half(out_vl_192);
+    const expected_vl_192_hash = try parseHex32("2d12f8dafee6a41c108376601196fb2e30a20f2c566ddf7897cd34149906b19e");
+    if (!std.mem.eql(u8, &out_vl_192_hash, &expected_vl_192_hash)) return error.VL192HashMismatch;
+
+    var vl_193_payload: [193]u8 = undefined;
+    for (&vl_193_payload, 0..) |*b, i| b.* = @intCast(i);
+    var vl_193 = try canonical.CanonicalSerializer.init(allocator);
+    defer vl_193.deinit();
+    try vl_193.addVL(3, &vl_193_payload);
+    const out_vl_193 = try vl_193.finish();
+    defer allocator.free(out_vl_193);
+    if (out_vl_193.len != 196) return error.VL193UnexpectedLength;
+    if (out_vl_193[0] != 0x73 or out_vl_193[1] != 0xC1 or out_vl_193[2] != 0x00) return error.VL193UnexpectedPrefix;
+    if (!std.mem.eql(u8, out_vl_193[3..], &vl_193_payload)) return error.VL193PayloadMismatch;
+    const out_vl_193_hash = crypto.Hash.sha512Half(out_vl_193);
+    const expected_vl_193_hash = try parseHex32("31ac058dc1677933d75d3c1cb878a09db093a058e0262728366e93ba1b39111a");
+    if (!std.mem.eql(u8, &out_vl_193_hash, &expected_vl_193_hash)) return error.VL193HashMismatch;
+
     const fixtures = [_]struct { path: []const u8, expected_sha512_half_hex: []const u8 }{
         .{ .path = "test_data/current_ledger.json", .expected_sha512_half_hex = "e6fcf8db7b7f53f4cc854951603299702d142b32d776403f15b7e71e6db8c73c" },
         .{ .path = "test_data/server_info.json", .expected_sha512_half_hex = "217d7592a371f0efd670b95b16d1634841ed0a245d97f34386967ffa43c29236" },
