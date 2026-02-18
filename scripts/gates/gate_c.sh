@@ -4,6 +4,7 @@ set -euo pipefail
 artifact_dir="${1:-artifacts/gate-c}"
 mkdir -p "$artifact_dir"
 strict_crypto="${GATE_C_STRICT_CRYPTO:-false}"
+ts_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 # Parity-focused suite through build graph (injects build options).
 if [[ "$strict_crypto" == "true" ]]; then
@@ -83,6 +84,7 @@ cat > "$artifact_dir/parity-report.json" <<JSON
 {
   "gate": "C",
   "status": "pass",
+  "timestamp_utc": "$ts_iso",
   "strict_crypto": "$strict_crypto",
   "crypto_vectors": {
     "positive": $positive_crypto_vectors,
@@ -102,3 +104,48 @@ cat > "$artifact_dir/parity-report.json" <<JSON
   ]
 }
 JSON
+
+if [[ -n "${GATE_C_TREND_INPUT_DIR:-}" ]]; then
+  bash scripts/gates/gate_c_trend_merge.sh \
+    "$GATE_C_TREND_INPUT_DIR" \
+    "$artifact_dir/crypto-trend-summary-7d.json" \
+    "${GATE_C_TREND_MAX_POINTS:-200}"
+
+  trend_status="$(jq -r '.status // "unknown"' "$artifact_dir/crypto-trend-summary-7d.json")"
+  if [[ "$trend_status" == "ok" ]]; then
+    trend_min_success_rate="${GATE_C_TREND_MIN_SUCCESS_RATE:-99}"
+    trend_min_avg_pos="${GATE_C_TREND_MIN_AVG_POSITIVE_VECTORS:-3}"
+    trend_min_avg_signing="${GATE_C_TREND_MIN_AVG_SIGNING_DOMAIN_CHECKS:-3}"
+    trend_min_consecutive_strict_passes="${GATE_C_TREND_MIN_CONSEC_STRICT_PASSES:-0}"
+    trend_fail_on_insufficient="${GATE_C_FAIL_ON_INSUFFICIENT_TREND:-false}"
+
+    success_rate="$(jq -r '.summary.success_rate' "$artifact_dir/crypto-trend-summary-7d.json")"
+    avg_pos="$(jq -r '.summary.avg_positive_vectors' "$artifact_dir/crypto-trend-summary-7d.json")"
+    avg_signing="$(jq -r '.summary.avg_signing_domain_checks' "$artifact_dir/crypto-trend-summary-7d.json")"
+    cons_strict="$(jq -r '.summary.consecutive_strict_passes_from_latest' "$artifact_dir/crypto-trend-summary-7d.json")"
+    strict_runs="$(jq -r '.summary.strict_runs' "$artifact_dir/crypto-trend-summary-7d.json")"
+
+    if ! awk -v got="$success_rate" -v min="$trend_min_success_rate" 'BEGIN { exit !(got+0 >= min+0) }'; then
+      echo "Gate C trend success_rate below threshold: ${success_rate}% < ${trend_min_success_rate}%" >&2
+      exit 1
+    fi
+    if ! awk -v got="$avg_pos" -v min="$trend_min_avg_pos" 'BEGIN { exit !(got+0 >= min+0) }'; then
+      echo "Gate C trend avg positive vectors below threshold: ${avg_pos} < ${trend_min_avg_pos}" >&2
+      exit 1
+    fi
+    if ! awk -v got="$avg_signing" -v min="$trend_min_avg_signing" 'BEGIN { exit !(got+0 >= min+0) }'; then
+      echo "Gate C trend avg signing-domain checks below threshold: ${avg_signing} < ${trend_min_avg_signing}" >&2
+      exit 1
+    fi
+    if (( trend_min_consecutive_strict_passes > 0 )); then
+      if [[ "$strict_runs" == "0" && "$trend_fail_on_insufficient" == "true" ]]; then
+        echo "Gate C trend has no strict runs, cannot satisfy strict streak requirement" >&2
+        exit 1
+      fi
+      if ! awk -v got="$cons_strict" -v min="$trend_min_consecutive_strict_passes" 'BEGIN { exit !(got+0 >= min+0) }'; then
+        echo "Gate C trend strict consecutive passes below threshold: ${cons_strict} < ${trend_min_consecutive_strict_passes}" >&2
+        exit 1
+      fi
+    fi
+  fi
+fi

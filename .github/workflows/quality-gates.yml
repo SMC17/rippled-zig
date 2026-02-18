@@ -90,6 +90,12 @@ jobs:
     needs: [gate-b-determinism]
     env:
       GATE_C_STRICT_CRYPTO: ${{ github.event_name == 'schedule' && 'true' || (github.event_name == 'workflow_dispatch' && inputs.run_strict_crypto == 'true' && 'true' || 'false') }}
+      GATE_C_TREND_INPUT_DIR: artifacts/gate-c
+      GATE_C_TREND_MIN_SUCCESS_RATE: ${{ github.event_name == 'schedule' && '99' || '95' }}
+      GATE_C_TREND_MIN_AVG_POSITIVE_VECTORS: "3"
+      GATE_C_TREND_MIN_AVG_SIGNING_DOMAIN_CHECKS: "3"
+      GATE_C_TREND_MIN_CONSEC_STRICT_PASSES: ${{ github.event_name == 'schedule' && '3' || '0' }}
+      GATE_C_FAIL_ON_INSUFFICIENT_TREND: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -221,6 +227,7 @@ jobs:
       - name: Build Ops Digest
         run: |
           ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          c_trend_file="$(find artifacts -name crypto-trend-summary-7d.json | head -n 1 || true)"
           d_trend_file="$(find artifacts -name trend-summary-7d.json | head -n 1 || true)"
           e_trend_file="$(find artifacts -name security-trend-summary-7d.json | head -n 1 || true)"
 
@@ -238,7 +245,21 @@ jobs:
             echo "- Gate E: ${{ needs.gate-e-security.result }}"
             echo
             echo "## Trend Thresholds"
+            if [ -n "$c_trend_file" ]; then
+              echo "### Gate C"
+              echo "- success_rate: $(jq -r '.summary.success_rate // "n/a"' "$c_trend_file")"
+              echo "- strict runs: $(jq -r '.summary.strict_runs // "n/a"' "$c_trend_file")"
+              echo "- strict passes: $(jq -r '.summary.strict_passes // "n/a"' "$c_trend_file")"
+              echo "- avg positive vectors: $(jq -r '.summary.avg_positive_vectors // "n/a"' "$c_trend_file")"
+              echo "- avg negative vectors: $(jq -r '.summary.avg_negative_vectors // "n/a"' "$c_trend_file")"
+              echo "- avg signing-domain checks: $(jq -r '.summary.avg_signing_domain_checks // "n/a"' "$c_trend_file")"
+              echo "- consecutive strict passes from latest: $(jq -r '.summary.consecutive_strict_passes_from_latest // "n/a"' "$c_trend_file")"
+            else
+              echo "### Gate C"
+              echo "- trend summary: unavailable"
+            fi
             if [ -n "$d_trend_file" ]; then
+              echo
               echo "### Gate D"
               echo "- success_rate: $(jq -r '.summary.success_rate // "n/a"' "$d_trend_file")"
               echo "- p95 server_info latency: $(jq -r '.summary.p95_latency_s.server_info // "n/a"' "$d_trend_file")"
