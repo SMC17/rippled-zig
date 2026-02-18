@@ -1,5 +1,6 @@
 const std = @import("std");
-const types = @import("types.zig");
+const build_options = @import("build_options");
+const has_secp256k1 = build_options.has_secp256k1;
 
 /// secp256k1 ECDSA Implementation via C Binding
 ///
@@ -19,27 +20,28 @@ const secp256k1_ecdsa_signature = extern struct {
     data: [64]u8 align(16), // Actual size from libsecp256k1 source
 };
 
-// C library declarations
-extern fn secp256k1_context_create(flags: c_uint) ?*anyopaque;
-extern fn secp256k1_context_destroy(ctx: ?*anyopaque) void;
-extern fn secp256k1_ecdsa_verify(
-    ctx: ?*const anyopaque,
-    sig: ?*const secp256k1_ecdsa_signature,
-    msg32: [*c]const u8,
-    pubkey: ?*const secp256k1_pubkey,
-) c_int;
-extern fn secp256k1_ec_pubkey_parse(
-    ctx: ?*const anyopaque,
-    pubkey: ?*secp256k1_pubkey,
-    input: [*c]const u8,
-    inputlen: usize,
-) c_int;
-extern fn secp256k1_ecdsa_signature_parse_der(
-    ctx: ?*const anyopaque,
-    sig: ?*secp256k1_ecdsa_signature,
-    input: [*c]const u8,
-    inputlen: usize,
-) c_int;
+const c = if (has_secp256k1) struct {
+    extern fn secp256k1_context_create(flags: c_uint) ?*anyopaque;
+    extern fn secp256k1_context_destroy(ctx: ?*anyopaque) void;
+    extern fn secp256k1_ecdsa_verify(
+        ctx: ?*const anyopaque,
+        sig: ?*const secp256k1_ecdsa_signature,
+        msg32: [*c]const u8,
+        pubkey: ?*const secp256k1_pubkey,
+    ) c_int;
+    extern fn secp256k1_ec_pubkey_parse(
+        ctx: ?*const anyopaque,
+        pubkey: ?*secp256k1_pubkey,
+        input: [*c]const u8,
+        inputlen: usize,
+    ) c_int;
+    extern fn secp256k1_ecdsa_signature_parse_der(
+        ctx: ?*const anyopaque,
+        sig: ?*secp256k1_ecdsa_signature,
+        input: [*c]const u8,
+        inputlen: usize,
+    ) c_int;
+} else struct {};
 
 const SECP256K1_CONTEXT_VERIFY: c_uint = 0x0101;
 
@@ -49,11 +51,13 @@ var context_mutex: std.Thread.Mutex = .{};
 
 /// Initialize secp256k1 context
 pub fn init() !void {
+    if (!has_secp256k1) return error.LibraryUnavailable;
+
     context_mutex.lock();
     defer context_mutex.unlock();
 
     if (global_context == null) {
-        global_context = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
+        global_context = c.secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
         if (global_context == null) {
             return error.ContextCreationFailed;
         }
@@ -62,11 +66,13 @@ pub fn init() !void {
 
 /// Deinitialize secp256k1 context
 pub fn deinit() void {
+    if (!has_secp256k1) return;
+
     context_mutex.lock();
     defer context_mutex.unlock();
 
     if (global_context) |ctx| {
-        secp256k1_context_destroy(ctx);
+        c.secp256k1_context_destroy(ctx);
         global_context = null;
     }
 }
@@ -77,6 +83,8 @@ pub fn verifySignature(
     message_hash: [32]u8,
     signature_der: []const u8,
 ) !bool {
+    if (!has_secp256k1) return error.LibraryUnavailable;
+
     // Ensure context initialized
     try init();
 
@@ -84,7 +92,7 @@ pub fn verifySignature(
 
     // Parse public key (libsecp256k1 uses opaque structs)
     var pubkey: secp256k1_pubkey = undefined;
-    const pubkey_result = secp256k1_ec_pubkey_parse(
+    const pubkey_result = c.secp256k1_ec_pubkey_parse(
         ctx,
         &pubkey,
         public_key.ptr,
@@ -96,7 +104,7 @@ pub fn verifySignature(
 
     // Parse DER signature (libsecp256k1 uses opaque structs)
     var signature: secp256k1_ecdsa_signature = undefined;
-    const sig_result = secp256k1_ecdsa_signature_parse_der(
+    const sig_result = c.secp256k1_ecdsa_signature_parse_der(
         ctx,
         &signature,
         signature_der.ptr,
@@ -107,7 +115,7 @@ pub fn verifySignature(
     }
 
     // Verify signature
-    const verify_result = secp256k1_ecdsa_verify(
+    const verify_result = c.secp256k1_ecdsa_verify(
         ctx,
         &signature,
         &message_hash,
