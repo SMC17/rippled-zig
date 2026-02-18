@@ -92,7 +92,7 @@ pub const CanonicalSerializer = struct {
     /// Add variable length field
     pub fn addVL(self: *CanonicalSerializer, field_code: u8, data: []const u8) !void {
         // Encode length + data
-        var encoded = std.ArrayList(u8).init(self.allocator);
+        var encoded = try std.ArrayList(u8).initCapacity(self.allocator, data.len + 3);
         defer encoded.deinit(self.allocator);
 
         // Length encoding
