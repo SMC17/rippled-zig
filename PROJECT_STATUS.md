@@ -3,7 +3,7 @@
 Canonical status for this repository. If any other file conflicts with this document, this document is authoritative.
 
 Last Updated: 2026-02-18
-Commit: dd300b2 (quality baseline merged to main), with follow-up cleanup in progress
+Commit: 807bb02 (latest pushed hardening slice), with Gate B shadowing fix pending CI confirmation
 Status Owner: Engineering
 Scope: `main`
 
@@ -25,6 +25,7 @@ Scope: `main`
 | Week Of | Gate A | Gate B | Gate C | Gate D | Gate E | Notes |
 |---|---|---|---|---|---|---|
 | 2026-02-16 | PASS | PASS | PASS | PASS | PASS | Baseline quality gates green; Gate D policy accepts explicit `skipped` artifact when secrets are unavailable. |
+| 2026-02-18 | PASS | PENDING | PASS | SKIPPED/POLICY | PASS | Gate B variable shadowing compile failure identified and fixed in `src/determinism_check.zig`; awaiting CI rerun result on `main`. |
 
 ## Release Decision Block
 - Current Decision: `NO-GO`
@@ -99,6 +100,8 @@ Pass Criteria:
 | R-003 | Partial secp256k1 and sync paths | High | Crypto/Network | complete implementation + conformance tests | 2026-03-04 | Open |
 
 ## Changes Since Last Update
+- Fixed Gate B CI compile regression in `src/determinism_check.zig` (loop capture shadowing local serializer variable).
+- Consolidated stale status documents to point to `PROJECT_STATUS.md` as canonical source.
 - Added fixed fixture hash vectors and canonical serialization hash vector in Gate B.
 - Upgraded Gate C from shape/type checks to value-level parity snapshots for local RPC and captured fixtures.
 - Tightened Gate D schema, protocol, network ID, fee, latency, and cross-endpoint consistency thresholds.

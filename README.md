@@ -15,6 +15,14 @@ rippled-zig is an implementation of the XRP Ledger protocol in Zig, created for 
 
 **NOT**: A production replacement for the official rippled (https://github.com/XRPLF/rippled)
 
+## Source Of Truth
+
+- Canonical status and release decision: `PROJECT_STATUS.md`
+- CI quality gates: `.github/workflows/quality-gates.yml`
+- Gate scripts: `scripts/gates/`
+
+All maturity/parity claims are considered untrusted unless backed by reproducible gate evidence in `PROJECT_STATUS.md`.
+
 ## What's Implemented
 
 Based on XRPL specification:

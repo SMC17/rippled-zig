@@ -86,7 +86,7 @@ pub fn main() !void {
 
     // Third canonical vector: VL boundary encoding at 192/193 bytes.
     var vl_192_payload: [192]u8 = undefined;
-    for (&vl_192_payload, 0..) |*b, i| b.* = @intCast(i);
+    for (&vl_192_payload, 0..) |*byte, i| byte.* = @intCast(i);
     var vl_192 = try canonical.CanonicalSerializer.init(allocator);
     defer vl_192.deinit();
     try vl_192.addVL(3, &vl_192_payload);
@@ -100,7 +100,7 @@ pub fn main() !void {
     if (!std.mem.eql(u8, &out_vl_192_hash, &expected_vl_192_hash)) return error.VL192HashMismatch;
 
     var vl_193_payload: [193]u8 = undefined;
-    for (&vl_193_payload, 0..) |*b, i| b.* = @intCast(i);
+    for (&vl_193_payload, 0..) |*byte, i| byte.* = @intCast(i);
     var vl_193 = try canonical.CanonicalSerializer.init(allocator);
     defer vl_193.deinit();
     try vl_193.addVL(3, &vl_193_payload);
