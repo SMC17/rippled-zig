@@ -17,10 +17,6 @@ on:
         description: "Run extended security/fuzz gate"
         required: false
         default: "false"
-      run_strict_crypto:
-        description: "Run strict secp256k1 parity checks in Gate C (requires libsecp256k1)"
-        required: false
-        default: "false"
 
 permissions:
   contents: read
@@ -89,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [gate-b-determinism]
     env:
-      GATE_C_STRICT_CRYPTO: ${{ github.event_name == 'schedule' && 'true' || (github.event_name == 'workflow_dispatch' && inputs.run_strict_crypto == 'true' && 'true' || 'false') }}
+      GATE_C_STRICT_CRYPTO: "true"
       GATE_C_TREND_INPUT_DIR: artifacts/gate-c
       GATE_C_TREND_MIN_SUCCESS_RATE: ${{ github.event_name == 'schedule' && '99' || '95' }}
       GATE_C_TREND_MIN_AVG_POSITIVE_VECTORS: "3"
