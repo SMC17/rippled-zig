@@ -121,10 +121,17 @@ pub const RpcServer = struct {
             }
         } else if (std.mem.eql(u8, method, "POST")) {
             // Find the JSON body
-            const body_start = std.mem.indexOf(u8, request, "\r\n\r\n") orelse
-                std.mem.indexOf(u8, request, "\n\n") orelse
-                return error.NoBody;
-            const body = request[body_start + 4 ..];
+            var body_start: ?usize = null;
+            var body_offset: usize = 0;
+            if (std.mem.indexOf(u8, request, "\r\n\r\n")) |idx| {
+                body_start = idx;
+                body_offset = 4;
+            } else if (std.mem.indexOf(u8, request, "\n\n")) |idx| {
+                body_start = idx;
+                body_offset = 2;
+            }
+            const start = body_start orelse return error.NoBody;
+            const body = request[start + body_offset ..];
 
             return self.handleJsonRpc(body);
         }

@@ -3,7 +3,7 @@
 Canonical status for this repository. If any other file conflicts with this document, this document is authoritative.
 
 Last Updated: 2026-02-18
-Commit: 30fb4cb (all quality gates green; Gate E ripgrep portability fix)
+Commit: a7ca70e (agent RPC live path + deterministic sim harness + Gate C agent_status schema checks)
 Status Owner: Engineering
 Scope: `main`
 
@@ -141,8 +141,8 @@ Pass Criteria:
 - Added Gate D trend consolidation script `scripts/gates/gate_d_trend_merge.sh` for rolling 7-day summaries from prior artifacts.
 - Raised Gate E with profile-based fuzz budgets (`pr` vs `nightly`), seeded adversarial corpus markers, crash-free marker enforcement, and timing/budget artifacts.
 - Added normalized Gate E artifact `security-metrics.json` for historical metric comparisons.
-- Operationalized nightly strict crypto in workflow:
-  - Gate C runs with `GATE_C_STRICT_CRYPTO=true` on schedule (and optional manual dispatch),
+- Operationalized strict crypto in workflow:
+  - Gate C runs with `GATE_C_STRICT_CRYPTO=true` across CI runs,
   - installs `libsecp256k1-dev` before strict verification runs.
 - Added Gate E trend consolidation script `scripts/gates/gate_e_trend_merge.sh` and per-run `security-trend-summary-7d.json` output.
 - Added initial agent control surface primitives in RPC layer:
