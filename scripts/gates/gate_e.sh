@@ -37,6 +37,7 @@ scan_matches() {
 }
 
 now_s() { date +%s; }
+ts_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 dur_build=0
 dur_runtime_safety=0
 dur_panic_scan=0
@@ -145,6 +146,7 @@ cat > "$artifact_dir/security-metrics.json" <<JSON
 {
   "gate": "E",
   "status": "pass",
+  "timestamp_utc": "$ts_iso",
   "profile": "$fuzz_profile",
   "thresholds": {
     "min_fuzz_cases": $min_fuzz_cases,
@@ -179,3 +181,10 @@ cat > "$artifact_dir/timings.json" <<JSON
   }
 }
 JSON
+
+if [[ -n "${GATE_E_TREND_INPUT_DIR:-}" ]]; then
+  scripts/gates/gate_e_trend_merge.sh \
+    "$GATE_E_TREND_INPUT_DIR" \
+    "$artifact_dir/security-trend-summary-7d.json" \
+    "${GATE_E_TREND_MAX_POINTS:-200}" || true
+fi

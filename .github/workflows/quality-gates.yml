@@ -17,6 +17,10 @@ on:
         description: "Run extended security/fuzz gate"
         required: false
         default: "false"
+      run_strict_crypto:
+        description: "Run strict secp256k1 parity checks in Gate C (requires libsecp256k1)"
+        required: false
+        default: "false"
 
 permissions:
   contents: read
@@ -84,6 +88,8 @@ jobs:
     name: Gate C - Cross-Implementation Parity
     runs-on: ubuntu-latest
     needs: [gate-b-determinism]
+    env:
+      GATE_C_STRICT_CRYPTO: ${{ github.event_name == 'schedule' && 'true' || (github.event_name == 'workflow_dispatch' && inputs.run_strict_crypto == 'true' && 'true' || 'false') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -91,6 +97,12 @@ jobs:
         uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.15.1
+
+      - name: Install libsecp256k1 (strict mode)
+        if: env.GATE_C_STRICT_CRYPTO == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsecp256k1-dev
 
       - name: Run Parity Harness
         run: scripts/gates/gate_c.sh artifacts/gate-c
@@ -113,6 +125,7 @@ jobs:
       GATE_D_ALLOW_SKIP_NO_SECRETS: "true"
       GATE_D_PROFILE: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
       GATE_D_MAX_LATENCY_S: ${{ github.event_name == 'schedule' && '3' || '5' }}
+      GATE_D_TREND_INPUT_DIR: artifacts/gate-d
     steps:
       - uses: actions/checkout@v4
 
@@ -139,6 +152,7 @@ jobs:
       GATE_E_PROFILE: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
       GATE_E_MIN_FUZZ_CASES: ${{ github.event_name == 'schedule' && '100000' || '25000' }}
       GATE_E_MAX_RUNTIME_S: ${{ github.event_name == 'schedule' && '60' || '20' }}
+      GATE_E_TREND_INPUT_DIR: artifacts/gate-e
     steps:
       - uses: actions/checkout@v4
 
