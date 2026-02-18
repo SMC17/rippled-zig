@@ -120,6 +120,10 @@ Pass Criteria:
 - Started optional strict secp256k1 verification harness in Gate C:
   - reproducible vector with canonical signing bytes, XRPL `STX` prefix, signing hash, pubkey/signature, expected `verify=true`,
   - activated only with `GATE_C_STRICT_CRYPTO=true` (and `-Dsecp256k1=true` build).
+- Expanded Gate C strict secp harness to vector-set coverage:
+  - 3 positive known-good vectors (mixed compressed/uncompressed pubkeys, varied DER lengths),
+  - 3 negative strict vectors (`tampered hash`, `tampered r/s`, `wrong pubkey`) expecting `verify=false`,
+  - marker-based reporting/enforcement in `scripts/gates/gate_c.sh`.
 - Tightened Gate D for richer evidence with profile metadata, explicit fail reason artifacts, endpoint health fields, and trend-point artifact output.
 - Added Gate D trend consolidation script `scripts/gates/gate_d_trend_merge.sh` for rolling 7-day summaries from prior artifacts.
 - Raised Gate E with profile-based fuzz budgets (`pr` vs `nightly`), seeded adversarial corpus markers, crash-free marker enforcement, and timing/budget artifacts.

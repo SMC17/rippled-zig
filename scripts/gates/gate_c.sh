@@ -12,6 +12,17 @@ else
   zig build gate-c 2>&1 | tee "$artifact_dir/parity.log"
 fi
 
+positive_crypto_vectors="$(grep -c '^CRYPTO_POSITIVE_VECTOR ' "$artifact_dir/parity.log" || true)"
+negative_crypto_vectors="$(grep -c '^CRYPTO_NEGATIVE_VECTOR ' "$artifact_dir/parity.log" || true)"
+if (( positive_crypto_vectors < 3 )); then
+  echo "Gate C requires >=3 positive secp vectors, got $positive_crypto_vectors" >&2
+  exit 1
+fi
+if [[ "$strict_crypto" == "true" ]] && (( negative_crypto_vectors < 3 )); then
+  echo "Gate C strict mode requires >=3 negative secp vectors, got $negative_crypto_vectors" >&2
+  exit 1
+fi
+
 # Basic fixture contract checks (shape-level parity with rippled responses).
 jq -e '.result.info.validated_ledger.seq != null' test_data/server_info.json > /dev/null
 jq -e '.result.drops.base_fee != null' test_data/fee_info.json > /dev/null
@@ -68,6 +79,10 @@ cat > "$artifact_dir/parity-report.json" <<JSON
   "gate": "C",
   "status": "pass",
   "strict_crypto": "$strict_crypto",
+  "crypto_vectors": {
+    "positive": $positive_crypto_vectors,
+    "negative": $negative_crypto_vectors
+  },
   "checks": [
     "rpc-shape-suite",
     "fixture-contracts",
@@ -76,7 +91,7 @@ cat > "$artifact_dir/parity-report.json" <<JSON
     "cross-fixture-consistency",
     "secp-fixture-signature-values",
     "negative-crypto-controls",
-    "strict-secp-vector-hash-and-optional-verify"
+    "strict-secp-vector-set-and-negative-controls"
   ]
 }
 JSON

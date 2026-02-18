@@ -26,11 +26,15 @@ const Fixture = struct {
     secp_signature: []const u8,
     secp_r: []const u8,
     secp_s: []const u8,
-    strict_signing_prefix_hex: []const u8,
-    strict_canonical_hex: []const u8,
-    strict_signing_hash_hex: []const u8,
-    strict_pubkey_hex: []const u8,
-    strict_signature_hex: []const u8,
+};
+
+const SecpStrictVector = struct {
+    name: []const u8,
+    signing_prefix_hex: []const u8,
+    canonical_hex: []const u8,
+    signing_hash_hex: []const u8,
+    pubkey_hex: []const u8,
+    signature_hex: []const u8,
 };
 
 fn getObject(value: std.json.Value) !std.json.ObjectMap {
@@ -342,30 +346,104 @@ fn assertNegativeCryptoControls(payload: []const u8, allocator: std.mem.Allocato
     return error.TamperedDERSignatureAccepted;
 }
 
-fn assertStrictSecpVector(allocator: std.mem.Allocator, fixture: Fixture) !void {
-    const canonical = try parseHexAlloc(allocator, fixture.strict_canonical_hex);
-    defer allocator.free(canonical);
-    const prefix = try parseHexAlloc(allocator, fixture.strict_signing_prefix_hex);
-    defer allocator.free(prefix);
-    if (prefix.len != 4) return error.InvalidSigningPrefixLength;
+fn assertStrictSecpVectors(allocator: std.mem.Allocator) !void {
+    const vectors = [_]SecpStrictVector{
+        .{
+            .name = "v1_uncompressed_sig72",
+            .signing_prefix_hex = "53545800",
+            .canonical_hex = "120000240000000168000000000000000a",
+            .signing_hash_hex = "a4f2d3f63af8364de7341a0e22e5b4c3429ea09f82bed5c70284c6da43f0ee0f",
+            .pubkey_hex = "048699404dcbc4fbf18381b4dd7a291038330d1b68a0f499a05615c3d1c4a4f103367afcb6b35377552b5c2c505ebb1da1ff3fdcfdf24115abe13dcbb5c8229398",
+            .signature_hex = "3046022100eabd8871e5ec54cb2953bd03e8325921918d6d1cbb07b86c391f9ae63c8bb6d1022100cc621dae5186149b25f465e1c44d840404b11a94b789c6e0411a7f60386b282b",
+        },
+        .{
+            .name = "v2_compressed_sig72",
+            .signing_prefix_hex = "53545800",
+            .canonical_hex = "1200006100000000000f4240",
+            .signing_hash_hex = "60e5289f93110f248697c9ed6ce1df68c84276c4285400f9621bc29e06a6164f",
+            .pubkey_hex = "0319c7dfcb8abd947d864dc6799741d32f6d2c7325472407ea0c373335732daf3a",
+            .signature_hex = "3046022100cb4528d4f60cd9dd7ee395bc719f0468bb8fe2976c16b9ed0ec10d682b3ec7c6022100d02c6ceaee5f750c2d123bdb8f0803009ebde2a31312ac3d332eec7f8b084f93",
+        },
+        .{
+            .name = "v3_compressed_sig71",
+            .signing_prefix_hex = "53545800",
+            .canonical_hex = "120000240000000155000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f68000000000000000a",
+            .signing_hash_hex = "f9a93b3ec683df7f5111d3ae4311d3d7a13fb6678b1a3513f21e76297a32ac48",
+            .pubkey_hex = "0249d90465c15548c5819079420bdc7409e0f9ae43b5150de87a452adea369a39c",
+            .signature_hex = "3045022100af8126d584359ef6f7e35990478fac562a31651e2a35c9c478d56a22f33ea0fe02206181f8830026382efc74523f8fbea22d14507ae53457b2cd4ebc03ff5c97bd6a",
+        },
+    };
 
-    const signing_blob = try allocator.alloc(u8, prefix.len + canonical.len);
-    defer allocator.free(signing_blob);
-    @memcpy(signing_blob[0..prefix.len], prefix);
-    @memcpy(signing_blob[prefix.len..], canonical);
-    const signing_hash = @import("crypto.zig").Hash.sha512Half(signing_blob);
-    const expected_hash = try parseHex32(fixture.strict_signing_hash_hex);
-    if (!std.mem.eql(u8, &signing_hash, &expected_hash)) return error.StrictSigningHashMismatch;
+    var first_hash: ?[32]u8 = null;
+    var first_sig: ?[]u8 = null;
+    var first_pub: ?[]u8 = null;
+    var second_pub: ?[]u8 = null;
+    defer if (first_sig) |s| allocator.free(s);
+    defer if (first_pub) |p| allocator.free(p);
+    defer if (second_pub) |p| allocator.free(p);
+
+    for (vectors, 0..) |vec, idx| {
+        const canonical = try parseHexAlloc(allocator, vec.canonical_hex);
+        defer allocator.free(canonical);
+        const prefix = try parseHexAlloc(allocator, vec.signing_prefix_hex);
+        defer allocator.free(prefix);
+        if (prefix.len != 4) return error.InvalidSigningPrefixLength;
+
+        const signing_blob = try allocator.alloc(u8, prefix.len + canonical.len);
+        defer allocator.free(signing_blob);
+        @memcpy(signing_blob[0..prefix.len], prefix);
+        @memcpy(signing_blob[prefix.len..], canonical);
+        const signing_hash = @import("crypto.zig").Hash.sha512Half(signing_blob);
+        const expected_hash = try parseHex32(vec.signing_hash_hex);
+        if (!std.mem.eql(u8, &signing_hash, &expected_hash)) return error.StrictSigningHashMismatch;
+
+        const signature = try parseHexAlloc(allocator, vec.signature_hex);
+        defer if (idx != 0) allocator.free(signature);
+        _ = try secp256k1.parseDERSignature(signature);
+
+        std.debug.print("CRYPTO_POSITIVE_VECTOR {s} hash_ok=1 sig_len={d}\n", .{ vec.name, signature.len });
+
+        if (!isStrictCryptoEnabled()) continue;
+
+        const pubkey = try parseHexAlloc(allocator, vec.pubkey_hex);
+        defer if (idx != 0 and idx != 1) allocator.free(pubkey);
+        const ok = try @import("crypto.zig").KeyPair.verify(pubkey, &signing_hash, signature, .secp256k1);
+        if (!ok) return error.StrictSecpVerifyFailed;
+
+        if (idx == 0) {
+            first_hash = signing_hash;
+            first_sig = signature;
+            first_pub = pubkey;
+        } else if (idx == 1) {
+            second_pub = pubkey;
+        }
+    }
 
     if (!isStrictCryptoEnabled()) return;
+    const base_hash = first_hash orelse return error.MissingStrictBaseVector;
+    const base_sig = first_sig orelse return error.MissingStrictBaseVector;
+    const base_pub = first_pub orelse return error.MissingStrictBaseVector;
+    const other_pub = second_pub orelse return error.MissingStrictBaseVector;
 
-    const pubkey = try parseHexAlloc(allocator, fixture.strict_pubkey_hex);
-    defer allocator.free(pubkey);
-    const signature = try parseHexAlloc(allocator, fixture.strict_signature_hex);
-    defer allocator.free(signature);
+    // Negative 1: tampered hash must fail verification.
+    var bad_hash = base_hash;
+    bad_hash[0] ^= 0x01;
+    const bad_hash_ok = @import("crypto.zig").KeyPair.verify(base_pub, &bad_hash, base_sig, .secp256k1) catch false;
+    if (bad_hash_ok) return error.TamperedHashAccepted;
+    std.debug.print("CRYPTO_NEGATIVE_VECTOR tampered_hash verify_false=1\n", .{});
 
-    const ok = try @import("crypto.zig").KeyPair.verify(pubkey, &signing_hash, signature, .secp256k1);
-    if (!ok) return error.StrictSecpVerifyFailed;
+    // Negative 2: tampered signature must fail verification.
+    var bad_sig = try allocator.dupe(u8, base_sig);
+    defer allocator.free(bad_sig);
+    bad_sig[bad_sig.len - 1] ^= 0x01;
+    const bad_sig_ok = @import("crypto.zig").KeyPair.verify(base_pub, &base_hash, bad_sig, .secp256k1) catch false;
+    if (bad_sig_ok) return error.TamperedSignatureAccepted;
+    std.debug.print("CRYPTO_NEGATIVE_VECTOR tampered_rs verify_false=1\n", .{});
+
+    // Negative 3: wrong pubkey for valid signature must fail verification.
+    const wrong_pub_ok = @import("crypto.zig").KeyPair.verify(other_pub, &base_hash, base_sig, .secp256k1) catch false;
+    if (wrong_pub_ok) return error.WrongPubKeyAccepted;
+    std.debug.print("CRYPTO_NEGATIVE_VECTOR wrong_pubkey verify_false=1\n", .{});
 }
 
 pub fn main() !void {
@@ -392,11 +470,6 @@ pub fn main() !void {
         .secp_signature = "3045022100E30FEACFAE9ED8034C4E24203BBFD6CE0D48ABCA901EDCE6EE04AA281A4DD73F02200CA7FDF03DC0B56F6E6FC5B499B4830F1ABD6A57FC4BE5C03F2CAF3CAFD1FF85",
         .secp_r = "E30FEACFAE9ED8034C4E24203BBFD6CE0D48ABCA901EDCE6EE04AA281A4DD73F",
         .secp_s = "0CA7FDF03DC0B56F6E6FC5B499B4830F1ABD6A57FC4BE5C03F2CAF3CAFD1FF85",
-        .strict_signing_prefix_hex = "53545800",
-        .strict_canonical_hex = "120000240000000168000000000000000a",
-        .strict_signing_hash_hex = "a4f2d3f63af8364de7341a0e22e5b4c3429ea09f82bed5c70284c6da43f0ee0f",
-        .strict_pubkey_hex = "04fa296a88ad11457343f591fa5b1b275cd62cfe2481e3692d0abfdf485038dfe0f7c1fdfef5d50b1849bf2a62f024aac4f3b98801023bd5e650a79df038da5b1b",
-        .strict_signature_hex = "3046022100fc53d6975608ecdd6abbf5f85aac4a550aa5a288b8f0f278c99acb760285ed10022100e35d3969851015aa6bc8e6d14bd603019c4f87dd7db679900f8199d80301e363",
     };
 
     var lm = try ledger.LedgerManager.init(allocator);
@@ -448,5 +521,5 @@ pub fn main() !void {
     try assertLedgerFixture(fixture_ledger, allocator, fixture);
     try assertSecpFixture(fixture_ledger, allocator, fixture);
     try assertNegativeCryptoControls(fixture_ledger, allocator, fixture);
-    try assertStrictSecpVector(allocator, fixture);
+    try assertStrictSecpVectors(allocator);
 }
