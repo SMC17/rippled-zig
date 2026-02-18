@@ -5,6 +5,31 @@ artifact_dir="${1:-artifacts/gate-e}"
 mkdir -p "$artifact_dir"
 min_fuzz_cases="${GATE_E_MIN_FUZZ_CASES:-25000}"
 max_runtime_s="${GATE_E_MAX_RUNTIME_S:-20}"
+have_rg=false
+if command -v rg >/dev/null 2>&1; then
+  have_rg=true
+fi
+
+extract_matches() {
+  local pattern="$1"
+  local file="$2"
+  if [[ "$have_rg" == "true" ]]; then
+    rg -o "$pattern" "$file"
+  else
+    grep -Eo "$pattern" "$file"
+  fi
+}
+
+scan_matches() {
+  local pattern="$1"
+  shift
+  if [[ "$have_rg" == "true" ]]; then
+    rg -n "$pattern" "$@"
+  else
+    grep -nR -E "$pattern" "$@"
+  fi
+}
+
 now_s() { date +%s; }
 dur_build=0
 dur_runtime_safety=0
@@ -24,7 +49,7 @@ if (( elapsed_s > max_runtime_s )); then
   exit 1
 fi
 
-fuzz_cases="$(rg -o "FUZZ_CASES: [0-9]+" "$artifact_dir/security-gate.log" | awk '{print $2}' | tail -n 1 || true)"
+fuzz_cases="$(extract_matches "FUZZ_CASES: [0-9]+" "$artifact_dir/security-gate.log" | awk '{print $2}' | tail -n 1 || true)"
 if [[ -z "${fuzz_cases}" ]]; then
   echo "FUZZ_CASES marker missing from security gate output" | tee "$artifact_dir/failure.txt"
   exit 1
@@ -37,14 +62,14 @@ fi
 
 # Static hygiene checks.
 step_start="$(now_s)"
-if rg -n "@setRuntimeSafety\(false\)" src tests > "$artifact_dir/runtime-safety-violations.txt"; then
+if scan_matches "@setRuntimeSafety\(false\)" src tests > "$artifact_dir/runtime-safety-violations.txt"; then
   echo "Runtime safety disabled in tracked code" | tee "$artifact_dir/failure.txt"
   exit 1
 fi
 dur_runtime_safety=$(( $(now_s) - step_start ))
 
 step_start="$(now_s)"
-if rg -n "\bpanic\(" src > "$artifact_dir/panic-usage.txt"; then
+if scan_matches "panic\(" src > "$artifact_dir/panic-usage.txt"; then
   panic_count=$(wc -l < "$artifact_dir/panic-usage.txt" | tr -d ' ')
 else
   panic_count=0
@@ -52,7 +77,7 @@ fi
 dur_panic_scan=$(( $(now_s) - step_start ))
 
 step_start="$(now_s)"
-if rg -n "TODO|FIXME" src/security.zig src/security_check.zig > "$artifact_dir/security-todo-findings.txt"; then
+if scan_matches "TODO|FIXME" src/security.zig src/security_check.zig > "$artifact_dir/security-todo-findings.txt"; then
   echo "Security-critical TODO/FIXME markers found" | tee "$artifact_dir/failure.txt"
   exit 1
 fi
