@@ -30,8 +30,19 @@ fn fillIncrementing(comptime N: usize) [N]u8 {
     return out;
 }
 
+fn encodeHex32Lower(input: [32]u8) [64]u8 {
+    const lut = "0123456789abcdef";
+    var out: [64]u8 = undefined;
+    for (input, 0..) |byte, i| {
+        out[i * 2] = lut[byte >> 4];
+        out[i * 2 + 1] = lut[byte & 0x0F];
+    }
+    return out;
+}
+
 fn recordVector(name: []const u8, hash: [32]u8) void {
-    std.debug.print("VECTOR_HASH {s} {s}\n", .{ name, std.fmt.fmtSliceHexLower(hash[0..]) });
+    const hex = encodeHex32Lower(hash);
+    std.debug.print("VECTOR_HASH {s} {s}\n", .{ name, hex });
 }
 
 pub fn main() !void {
