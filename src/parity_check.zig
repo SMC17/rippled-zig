@@ -1,6 +1,7 @@
 const std = @import("std");
 const ledger = @import("ledger.zig");
 const rpc_methods = @import("rpc_methods.zig");
+const secp256k1 = @import("secp256k1.zig");
 const transaction = @import("transaction.zig");
 const types = @import("types.zig");
 
@@ -20,6 +21,11 @@ const Fixture = struct {
     account_status: []const u8,
     account_error_code: i64,
     account_validated: bool,
+    secp_tx_hash: []const u8,
+    secp_pub_key: []const u8,
+    secp_signature: []const u8,
+    secp_r: []const u8,
+    secp_s: []const u8,
 };
 
 fn getObject(value: std.json.Value) !std.json.ObjectMap {
@@ -60,6 +66,21 @@ fn getBool(value: std.json.Value) !bool {
         .bool => |b| b,
         else => error.ExpectedBool,
     };
+}
+
+fn parseHex32(hex: []const u8) ![32]u8 {
+    if (hex.len != 64) return error.InvalidHexLength;
+    var out: [32]u8 = undefined;
+    _ = try std.fmt.hexToBytes(&out, hex);
+    return out;
+}
+
+fn parseHexAlloc(allocator: std.mem.Allocator, hex: []const u8) ![]u8 {
+    if (hex.len % 2 != 0) return error.InvalidHexLength;
+    const out = try allocator.alloc(u8, hex.len / 2);
+    errdefer allocator.free(out);
+    _ = try std.fmt.hexToBytes(out, hex);
+    return out;
 }
 
 fn assertAccountInfoLocal(payload: []const u8, allocator: std.mem.Allocator) !void {
@@ -228,6 +249,39 @@ fn assertLedgerFixture(payload: []const u8, allocator: std.mem.Allocator, fixtur
     if (index != fixture.ledger_index) return error.LedgerFixtureIndexMismatch;
 }
 
+fn assertSecpFixture(payload: []const u8, allocator: std.mem.Allocator, fixture: Fixture) !void {
+    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, payload, .{});
+    defer parsed.deinit();
+
+    const root = try getObject(parsed.value);
+    const result = try getObject(try getField(root, "result"));
+    const ledger_obj = try getObject(try getField(result, "ledger"));
+    const txs_value = try getField(ledger_obj, "transactions");
+    const txs = switch (txs_value) {
+        .array => |arr| arr,
+        else => return error.ExpectedTransactionsArray,
+    };
+    if (txs.items.len == 0) return error.EmptyTransactions;
+    const first_tx = try getObject(txs.items[0]);
+
+    const tx_hash = try getString(try getField(first_tx, "hash"));
+    if (!std.mem.eql(u8, tx_hash, fixture.secp_tx_hash)) return error.SecpFixtureTxHashMismatch;
+
+    const signing_pub_key = try getString(try getField(first_tx, "SigningPubKey"));
+    if (!std.mem.eql(u8, signing_pub_key, fixture.secp_pub_key)) return error.SecpFixturePubKeyMismatch;
+
+    const txn_signature = try getString(try getField(first_tx, "TxnSignature"));
+    if (!std.mem.eql(u8, txn_signature, fixture.secp_signature)) return error.SecpFixtureSignatureMismatch;
+
+    const sig_bytes = try parseHexAlloc(allocator, txn_signature);
+    defer allocator.free(sig_bytes);
+    const parsed_sig = try secp256k1.parseDERSignature(sig_bytes);
+    const expected_r = try parseHex32(fixture.secp_r);
+    const expected_s = try parseHex32(fixture.secp_s);
+    if (!std.mem.eql(u8, &parsed_sig.r, &expected_r)) return error.SecpFixtureRValueMismatch;
+    if (!std.mem.eql(u8, &parsed_sig.s, &expected_s)) return error.SecpFixtureSValueMismatch;
+}
+
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
@@ -247,6 +301,11 @@ pub fn main() !void {
         .account_status = "error",
         .account_error_code = 35,
         .account_validated = true,
+        .secp_tx_hash = "09D0D3C0AB0E6D8EBB3117C2FF1DD72F063818F528AF54A4553C8541DD2E8B5B",
+        .secp_pub_key = "02D3FC6F04117E6420CAEA735C57CEEC934820BBCD109200933F6BBDD98F7BFBD9",
+        .secp_signature = "3045022100E30FEACFAE9ED8034C4E24203BBFD6CE0D48ABCA901EDCE6EE04AA281A4DD73F02200CA7FDF03DC0B56F6E6FC5B499B4830F1ABD6A57FC4BE5C03F2CAF3CAFD1FF85",
+        .secp_r = "E30FEACFAE9ED8034C4E24203BBFD6CE0D48ABCA901EDCE6EE04AA281A4DD73F",
+        .secp_s = "0CA7FDF03DC0B56F6E6FC5B499B4830F1ABD6A57FC4BE5C03F2CAF3CAFD1FF85",
     };
 
     var lm = try ledger.LedgerManager.init(allocator);
@@ -296,4 +355,5 @@ pub fn main() !void {
     try assertFeeFixture(fixture_fee, allocator, fixture);
     try assertAccountFixture(fixture_acct, allocator, fixture);
     try assertLedgerFixture(fixture_ledger, allocator, fixture);
+    try assertSecpFixture(fixture_ledger, allocator, fixture);
 }

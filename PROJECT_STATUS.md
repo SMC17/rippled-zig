@@ -108,6 +108,9 @@ Pass Criteria:
   - mixed-field ordering vector including `Hash256`,
   - fixed expected serialized bytes and SHA-512Half digests.
 - Expanded Gate C fixture parity to full snapshot checks for stable fields and cross-fixture ledger seq/hash consistency across `server_info`, `account_info`, and `current_ledger`.
+- Added Gate C secp256k1 fixture evidence checks from `current_ledger.json`:
+  - fixed `hash` / `SigningPubKey` / `TxnSignature` values,
+  - DER parse validation of signature `r`/`s` components in `src/parity_check.zig`.
 - Tightened Gate D for richer evidence with profile metadata, explicit fail reason artifacts, endpoint health fields, and trend-point artifact output.
 - Raised Gate E with profile-based fuzz budgets (`pr` vs `nightly`), seeded adversarial corpus markers, crash-free marker enforcement, and timing/budget artifacts.
 

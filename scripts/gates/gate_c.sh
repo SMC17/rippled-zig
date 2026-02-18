@@ -38,6 +38,9 @@ jq -e '.result.status == "success"' test_data/current_ledger.json > /dev/null
 jq -e '(.result.ledger.ledger_index | tostring) == "11900686"' test_data/current_ledger.json > /dev/null
 jq -e '.result.ledger.ledger_hash == "FB90529615FA52790E2B2E24C32A482DBF9F969C3FDC2726ED0A64A40962BF00"' test_data/current_ledger.json > /dev/null
 jq -e '.result.ledger.closed == true' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.transactions[0].hash == "09D0D3C0AB0E6D8EBB3117C2FF1DD72F063818F528AF54A4553C8541DD2E8B5B"' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.transactions[0].SigningPubKey == "02D3FC6F04117E6420CAEA735C57CEEC934820BBCD109200933F6BBDD98F7BFBD9"' test_data/current_ledger.json > /dev/null
+jq -e '.result.ledger.transactions[0].TxnSignature == "3045022100E30FEACFAE9ED8034C4E24203BBFD6CE0D48ABCA901EDCE6EE04AA281A4DD73F02200CA7FDF03DC0B56F6E6FC5B499B4830F1ABD6A57FC4BE5C03F2CAF3CAFD1FF85"' test_data/current_ledger.json > /dev/null
 
 # Cross-fixture consistency assertions.
 server_seq="$(jq -r '.result.info.validated_ledger.seq' test_data/server_info.json)"
@@ -64,7 +67,8 @@ cat > "$artifact_dir/parity-report.json" <<JSON
     "fixture-contracts",
     "snapshot-field-values",
     "snapshot-validated-ledger-seq-hash",
-    "cross-fixture-consistency"
+    "cross-fixture-consistency",
+    "secp-fixture-signature-values"
   ]
 }
 JSON
