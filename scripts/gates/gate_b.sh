@@ -16,12 +16,15 @@ if (( vector_count < 8 )); then
 fi
 
 # Deterministic fixture manifest for tracked test vectors.
-if command -v shasum >/dev/null 2>&1; then
-  shasum -a 256 test_data/*.json | sort > "$artifact_dir/test-data.sha256"
-elif command -v sha256sum >/dev/null 2>&1; then
-  sha256sum test_data/*.json | sort > "$artifact_dir/test-data.sha256"
-else
-  echo "No SHA256 tool found" | tee "$artifact_dir/failure.txt"
+scripts/fixtures/compute_manifest.sh test_data > "$artifact_dir/test-data.sha256"
+
+# Fixture baseline must match committed manifest unless intentionally updated.
+if [[ ! -f test_data/fixture_manifest.sha256 ]]; then
+  echo "Missing committed fixture manifest: test_data/fixture_manifest.sha256" | tee "$artifact_dir/failure.txt"
+  exit 1
+fi
+if ! diff -u test_data/fixture_manifest.sha256 "$artifact_dir/test-data.sha256" > "$artifact_dir/fixture-manifest.diff"; then
+  echo "Fixture manifest drift detected. Refresh fixtures via fixture-refresh workflow and commit reviewed updates." | tee "$artifact_dir/failure.txt"
   exit 1
 fi
 

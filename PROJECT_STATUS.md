@@ -133,6 +133,10 @@ Pass Criteria:
   - Gate E enforces trend success-rate, crash-free-rate, p95 runtime, and avg fuzz budget floors from `security-trend-summary-7d.json`.
 - Added per-run operations digest artifact:
   - `ops-digest.md` generated in release summary job with A-E results, trend values, and pass/fail interpretation.
+- Added fixture baseline governance:
+  - committed manifest `test_data/fixture_manifest.sha256` is enforced in Gate B,
+  - `fixture-refresh` workflow generates refreshed fixtures plus drift summary artifacts,
+  - baseline updates require explicit workflow approval input before a reviewed PR commit.
 - Tightened Gate D for richer evidence with profile metadata, explicit fail reason artifacts, endpoint health fields, and trend-point artifact output.
 - Added Gate D trend consolidation script `scripts/gates/gate_d_trend_merge.sh` for rolling 7-day summaries from prior artifacts.
 - Raised Gate E with profile-based fuzz budgets (`pr` vs `nightly`), seeded adversarial corpus markers, crash-free marker enforcement, and timing/budget artifacts.

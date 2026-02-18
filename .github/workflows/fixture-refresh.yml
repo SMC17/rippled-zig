@@ -1,0 +1,77 @@
+name: Fixture Refresh
+
+on:
+  workflow_dispatch:
+    inputs:
+      approve_baseline_update:
+        description: "Approve fixture baseline update after reviewing drift summary"
+        required: true
+        default: "false"
+      testnet_rpc_url:
+        description: "XRPL RPC URL to fetch fixtures from"
+        required: false
+        default: "https://s.altnet.rippletest.net:51234"
+      test_account:
+        description: "Account for account_info fixture"
+        required: false
+        default: "rN7n7otQDd6FczFgLdlqtyMVrn3X66B4T"
+
+permissions:
+  contents: read
+
+jobs:
+  refresh-fixtures:
+    name: Refresh Fixture Baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Capture Current Manifest
+        run: |
+          chmod +x scripts/fixtures/compute_manifest.sh
+          scripts/fixtures/compute_manifest.sh test_data > /tmp/fixtures-before.sha256
+          cp /tmp/fixtures-before.sha256 artifacts-before.sha256
+
+      - name: Fetch Latest Testnet Fixtures
+        env:
+          TESTNET_RPC: ${{ inputs.testnet_rpc_url }}
+          TEST_ACCOUNT: ${{ inputs.test_account }}
+        run: |
+          chmod +x scripts/fetch_testnet_data.sh
+          scripts/fetch_testnet_data.sh
+
+      - name: Compute New Manifest
+        run: |
+          scripts/fixtures/compute_manifest.sh test_data > /tmp/fixtures-after.sha256
+          cp /tmp/fixtures-after.sha256 artifacts-after.sha256
+          cp /tmp/fixtures-after.sha256 test_data/fixture_manifest.sha256
+
+      - name: Build Drift Summary
+        run: |
+          chmod +x scripts/fixtures/build_diff_summary.sh
+          scripts/fixtures/build_diff_summary.sh \
+            /tmp/fixtures-before.sha256 \
+            /tmp/fixtures-after.sha256 \
+            artifacts/fixture-refresh/fixture-diff-summary.md \
+            artifacts/fixture-refresh/fixture-drift.json
+
+      - name: Upload Fixture Refresh Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixture-refresh
+          path: |
+            test_data/*.json
+            test_data/fixture_manifest.sha256
+            artifacts-before.sha256
+            artifacts-after.sha256
+            artifacts/fixture-refresh/fixture-diff-summary.md
+            artifacts/fixture-refresh/fixture-drift.json
+          retention-days: 14
+
+      - name: Require Explicit Approval
+        run: |
+          if [ "${{ inputs.approve_baseline_update }}" != "true" ]; then
+            echo "Baseline update not approved. Review fixture-refresh artifact and rerun with approve_baseline_update=true."
+            exit 1
+          fi
+          echo "Baseline update approved. Commit refreshed test_data/* and test_data/fixture_manifest.sha256 in a reviewed PR."
