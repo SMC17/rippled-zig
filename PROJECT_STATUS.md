@@ -2,10 +2,10 @@
 
 Canonical status for this repository. If any other file conflicts with this document, this document is authoritative.
 
-Last Updated: 2026-02-17
-Commit: 7561a49 (baseline before this hardening pass)
+Last Updated: 2026-02-18
+Commit: 8a89213 (latest verified CI fix before current patch set)
 Status Owner: Engineering
-Scope: `main`
+Scope: `hardening/quality-gates` PR to `main`
 
 ## Policy
 - No unqualified percentage claims.
@@ -15,18 +15,35 @@ Scope: `main`
 ## Release Decision
 - Release Candidate: `NO`
 - Blocking Gates:
-  - Gate A (Build + Unit/Integration): `FAIL`
-  - Gate B (Deterministic Serialization/Hash): `NOT RUN`
-  - Gate C (Cross-Impl Parity vs rippled): `NOT RUN`
-  - Gate D (Live Testnet Conformance): `NOT RUN`
-  - Gate E (Security/Fuzz/Static): `NOT RUN`
+  - Gate A (Build + Unit/Integration): `PASS`
+  - Gate B (Deterministic Serialization/Hash): `PASS`
+  - Gate C (Cross-Impl Parity vs rippled): `PASS`
+  - Gate D (Live Testnet Conformance): `FAIL` (secret precheck failure; fixed in `8a89213`)
+  - Gate E (Security/Fuzz/Static): `FAIL` (Zig const warning promoted to error; fixed in `8a89213`)
+
+## Weekly Gate Results
+| Week Of | Gate A | Gate B | Gate C | Gate D | Gate E | Notes |
+|---|---|---|---|---|---|---|
+| 2026-02-16 | PASS | PASS | PASS | FAIL | FAIL | D failed before gate script skip-path could execute; E failed on Zig 0.15 `var`/`const` strictness; both patched and rerun pending. |
+
+## Release Decision Block
+- Current Decision: `NO-GO`
+- Required for `GO`:
+  - Gate A/B/C/E are green on latest commit.
+  - Gate D is either green (with secrets configured) or explicitly `skipped` with artifact reason.
+  - No unresolved `HIGH` severity risks in the risk register.
+  - `PROJECT_STATUS.md` evidence table updated with run links/commit SHAs.
+- Current Blockers:
+  - Need rerun after commits `8a89213` and subsequent hardening patches for D/E.
+  - Need weekly evidence links from latest CI run attached to Claim->Evidence table.
 
 ## Claim -> Evidence Register
 | Claim ID | Claim | Scope | Evidence Type | Evidence Path | Commit SHA | Date | Reviewer | Result |
 |---|---|---|---|---|---|---|---|---|
-| C-001 | Toolchain must be Zig 0.15.1 | Gate A | CI config + tool pin | `.github/workflows/ci.yml`, `.tool-versions` | working tree | 2026-02-17 | pending | PASS |
-| C-002 | Local gate baseline currently fails | Gate A | build output | `artifacts/gate-a/failure.txt` (expected after running gate) | working tree | 2026-02-17 | pending | FAIL |
-| C-003 | Quality gate workflow is executable without TODO stubs | Gates A-E | workflow + scripts | `.github/workflows/quality-gates.yml`, `scripts/gates/` | working tree | 2026-02-17 | pending | PASS |
+| C-001 | Toolchain pinned to Zig 0.15.1 | Gate A | CI config + tool pin | `.github/workflows/ci.yml`, `.tool-versions` | working tree | 2026-02-18 | pending | PASS |
+| C-002 | Quality gate workflow executes A/B/C in PR runs | Gates A-C | CI runs | `.github/workflows/quality-gates.yml` | working tree | 2026-02-18 | pending | PASS |
+| C-003 | Gate D secret handling is explicit and artifacted | Gate D | gate script output | `scripts/gates/gate_d.sh` | working tree | 2026-02-18 | pending | PASS |
+| C-004 | Gate E security checks compile and execute under Zig 0.15 | Gate E | build + gate logs | `scripts/gates/gate_e.sh`, `src/security_check.zig` | working tree | 2026-02-18 | pending | PENDING RERUN |
 
 ## Gate Definitions
 ### Gate A: Build + Unit/Integration
@@ -60,33 +77,34 @@ Pass Criteria:
 ## Current Capability Matrix
 | Area | State | Evidence | Included in Parity Claim |
 |---|---|---|---|
-| Core build | Failing locally on wrong toolchain | `zig version`, build output | NO |
-| Serialization tests | Present and wired in Gate B | `tests/protocol/serialization_comprehensive.zig` | NO |
+| Core build | Passing in CI (A) | gate-a artifacts | NO |
+| Serialization checks | Fixed-hash deterministic gate | `src/determinism_check.zig` | NO |
 | RPC methods | Implemented with mixed maturity | `src/rpc_methods.zig`, `src/rpc_complete.zig` | NO |
 | Peer protocol | Partial | `src/peer_protocol.zig` | NO |
 | Ledger sync | Partial | `src/ledger_sync.zig` | NO |
 | secp256k1 verify | Partial | `src/secp256k1*.zig` | NO |
 | Testnet conformance | Wired via Gate D | `scripts/gates/gate_d.sh` | NO |
-| Security scans | Wired via Gate E | `scripts/gates/gate_e.sh` | NO |
+| Security scans | Wired via Gate E with strict negatives | `scripts/gates/gate_e.sh`, `src/security_check.zig` | NO |
 
 ## Known Limitations
-- Build/test reproducibility depends on Zig 0.15.1; local 0.14.1 is incompatible.
+- Local toolchain remains 0.14.1 in this workspace; local parity with CI requires upgrading to Zig 0.15.1.
 - Several subsystems remain partial and require evidence-backed closure before parity claims.
 - Live testnet conformance is environment-dependent and must run in controlled CI with secrets.
 
 ## Open Risks and Owners
 | Risk ID | Description | Severity | Owner | Mitigation | Target Date | Status |
 |---|---|---|---|---|---|---|
-| R-001 | Toolchain drift breaks reproducibility | High | DevOps | enforce `.tool-versions` and CI check | 2026-02-18 | Open |
+| R-001 | Toolchain drift breaks reproducibility | High | DevOps | enforce `.tool-versions` and CI check | 2026-02-21 | Open |
 | R-002 | Unverified parity claims | High | Eng Lead | gate-based claim policy and evidence register | 2026-02-21 | Open |
-| R-003 | Partial secp256k1 and sync paths | High | Crypto/Network | complete implementation + conformance tests | 2026-02-28 | Open |
+| R-003 | Partial secp256k1 and sync paths | High | Crypto/Network | complete implementation + conformance tests | 2026-03-04 | Open |
 
 ## Changes Since Last Update
-- Added executable quality gate workflow: `.github/workflows/quality-gates.yml`.
-- Added concrete gate runners: `scripts/gates/gate_a.sh` through `scripts/gates/gate_e.sh`.
-- Added toolchain pin: `.tool-versions`.
+- A/B/C passing in CI on PR branch after gate hardening.
+- D/E failure root causes identified and patched; rerun pending.
+- Gate D schema/threshold checks tightened and skip semantics explicit.
+- Gate E negative/security checks strengthened (input and static policy checks).
 
 ## Sign-Off
 - Engineering Lead: pending
 - Security Lead: pending
-- Date: 2026-02-17
+- Date: 2026-02-18

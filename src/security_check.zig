@@ -15,6 +15,34 @@ pub fn main() !void {
         if (err != error.InputTooLong) return err;
     }
 
+    const odd_hex = security.Security.InputValidator.validateHex("abc");
+    if (odd_hex) |_| {
+        return error.InvalidHexAccepted;
+    } else |err| {
+        if (err != error.InvalidHexLength) return err;
+    }
+
+    const bad_hex = security.Security.InputValidator.validateHex("0011GG");
+    if (bad_hex) |_| {
+        return error.NonHexAccepted;
+    } else |err| {
+        if (err != error.InvalidHexCharacter) return err;
+    }
+
+    const out_of_range = security.Security.InputValidator.validateNumber("9999999", 0, 1000);
+    if (out_of_range) |_| {
+        return error.OutOfRangeNumberAccepted;
+    } else |err| {
+        if (err != error.NumberOutOfRange) return err;
+    }
+
+    const null_byte = security.Security.InputValidator.validateString("abc\x00def", 32);
+    if (null_byte) |_| {
+        return error.NullByteAccepted;
+    } else |err| {
+        if (err != error.NullByteInInput) return err;
+    }
+
     var limiter = security.Security.RateLimiter.init(allocator, 1000, 5);
     defer limiter.deinit();
 

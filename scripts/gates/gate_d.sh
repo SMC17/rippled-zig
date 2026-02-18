@@ -6,8 +6,11 @@ mkdir -p "$artifact_dir"
 
 rpc_url="${TESTNET_RPC_URL:-}"
 ws_url="${TESTNET_WS_URL:-}"
-max_latency_s="${GATE_D_MAX_LATENCY_S:-8}"
+max_latency_s="${GATE_D_MAX_LATENCY_S:-5}"
 min_ledger_seq="${GATE_D_MIN_LEDGER_SEQ:-1000000}"
+expected_network_id="${GATE_D_EXPECTED_NETWORK_ID:-1}"
+max_base_fee="${GATE_D_MAX_BASE_FEE:-100000}"
+min_base_fee="${GATE_D_MIN_BASE_FEE:-10}"
 
 if [[ -z "$rpc_url" || -z "$ws_url" ]]; then
   if [[ "${GATE_D_ALLOW_SKIP_NO_SECRETS:-false}" == "true" ]]; then
@@ -21,6 +24,15 @@ JSON
     exit 0
   fi
   echo "TESTNET_RPC_URL and TESTNET_WS_URL are required" | tee "$artifact_dir/failure.txt"
+  exit 1
+fi
+
+if [[ ! "$rpc_url" =~ ^https:// ]]; then
+  echo "TESTNET_RPC_URL must use https:// scheme" | tee "$artifact_dir/failure.txt"
+  exit 1
+fi
+if [[ ! "$ws_url" =~ ^wss:// ]]; then
+  echo "TESTNET_WS_URL must use wss:// scheme" | tee "$artifact_dir/failure.txt"
   exit 1
 fi
 
@@ -71,7 +83,10 @@ post_json '{"method":"fee"}' "$artifact_dir/fee.json" "$artifact_dir/fee.metrics
 validated_seq="$(jq -r '.result.info.validated_ledger.seq' "$artifact_dir/server_info.json")"
 validated_hash="$(jq -r '.result.info.validated_ledger.hash' "$artifact_dir/server_info.json")"
 server_state="$(jq -r '.result.info.server_state' "$artifact_dir/server_info.json")"
+network_id="$(jq -r '.result.info.network_id' "$artifact_dir/server_info.json")"
+server_info_status="$(jq -r '.result.status' "$artifact_dir/server_info.json")"
 base_fee="$(jq -r '.result.drops.base_fee' "$artifact_dir/fee.json")"
+fee_status="$(jq -r '.result.status' "$artifact_dir/fee.json")"
 
 if [[ -z "$validated_seq" || "$validated_seq" == "null" ]]; then
   echo "Missing validated ledger sequence" | tee "$artifact_dir/failure.txt"
@@ -93,6 +108,21 @@ if ! [[ "$validated_hash" =~ ^[A-F0-9]{64}$ ]]; then
   exit 1
 fi
 
+if [[ "$server_info_status" != "success" ]]; then
+  echo "server_info status is not success: $server_info_status" | tee "$artifact_dir/failure.txt"
+  exit 1
+fi
+
+if ! [[ "$network_id" =~ ^[0-9]+$ ]]; then
+  echo "Non-numeric network_id: $network_id" | tee "$artifact_dir/failure.txt"
+  exit 1
+fi
+
+if (( network_id != expected_network_id )); then
+  echo "Unexpected network_id: $network_id (expected $expected_network_id)" | tee "$artifact_dir/failure.txt"
+  exit 1
+fi
+
 case "$server_state" in
   full|proposing|validating|syncing)
     ;;
@@ -107,8 +137,13 @@ if ! [[ "$base_fee" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-if (( base_fee <= 0 || base_fee > 1000000 )); then
-  echo "base_fee outside threshold: $base_fee" | tee "$artifact_dir/failure.txt"
+if [[ "$fee_status" != "success" ]]; then
+  echo "fee status is not success: $fee_status" | tee "$artifact_dir/failure.txt"
+  exit 1
+fi
+
+if (( base_fee < min_base_fee || base_fee > max_base_fee )); then
+  echo "base_fee outside threshold: $base_fee (expected $min_base_fee..$max_base_fee)" | tee "$artifact_dir/failure.txt"
   exit 1
 fi
 
@@ -117,6 +152,7 @@ post_json "$ledger_payload" "$artifact_dir/ledger.json" "$artifact_dir/ledger.me
 
 ledger_seq="$(jq -r '.result.ledger.ledger_index // .result.ledger_index' "$artifact_dir/ledger.json")"
 ledger_hash="$(jq -r '.result.ledger.ledger_hash // .result.ledger_hash' "$artifact_dir/ledger.json")"
+ledger_status="$(jq -r '.result.status // \"success\"' "$artifact_dir/ledger.json")"
 
 if ! [[ "$ledger_seq" =~ ^[0-9]+$ ]]; then
   echo "Non-numeric ledger sequence returned from ledger method: $ledger_seq" | tee "$artifact_dir/failure.txt"
@@ -130,6 +166,11 @@ fi
 
 if ! [[ "$ledger_hash" =~ ^[A-F0-9]{64}$ ]]; then
   echo "Invalid ledger hash format from ledger method" | tee "$artifact_dir/failure.txt"
+  exit 1
+fi
+
+if [[ "$ledger_status" != "success" ]]; then
+  echo "ledger status is not success: $ledger_status" | tee "$artifact_dir/failure.txt"
   exit 1
 fi
 
@@ -149,7 +190,9 @@ cat > "$artifact_dir/testnet-conformance.json" <<JSON
   "thresholds": {
     "max_latency_s": $max_latency_s,
     "min_ledger_seq": $min_ledger_seq,
-    "base_fee_max": 1000000
+    "network_id": $expected_network_id,
+    "base_fee_min": $min_base_fee,
+    "base_fee_max": $max_base_fee
   },
   "network": {
     "rpc_url": "$rpc_url",
