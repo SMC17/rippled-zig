@@ -10,6 +10,16 @@ max_latency_s="${GATE_D_MAX_LATENCY_S:-8}"
 min_ledger_seq="${GATE_D_MIN_LEDGER_SEQ:-1000000}"
 
 if [[ -z "$rpc_url" || -z "$ws_url" ]]; then
+  if [[ "${GATE_D_ALLOW_SKIP_NO_SECRETS:-false}" == "true" ]]; then
+    cat > "$artifact_dir/testnet-conformance.json" <<JSON
+{
+  "gate": "D",
+  "status": "skipped",
+  "reason": "missing TESTNET_RPC_URL/TESTNET_WS_URL"
+}
+JSON
+    exit 0
+  fi
   echo "TESTNET_RPC_URL and TESTNET_WS_URL are required" | tee "$artifact_dir/failure.txt"
   exit 1
 fi
