@@ -50,6 +50,13 @@ const SecpStrictVector = struct {
     signature_hex: []const u8,
 };
 
+const SecpVerifyVector = struct {
+    name: []const u8,
+    signing_hash_hex: []const u8,
+    pubkey_hex: []const u8,
+    signature_hex: []const u8,
+};
+
 fn getObject(value: std.json.Value) !std.json.ObjectMap {
     return switch (value) {
         .object => |obj| obj,
@@ -471,7 +478,7 @@ fn assertNegativeCryptoControls(payload: []const u8, allocator: std.mem.Allocato
 }
 
 fn assertStrictSecpVectors(allocator: std.mem.Allocator) !void {
-    const vectors = [_]SecpStrictVector{
+    const signing_domain_vectors = [_]SecpStrictVector{
         .{
             .name = "v1_uncompressed_sig72",
             .signing_prefix_hex = "53545800",
@@ -498,6 +505,27 @@ fn assertStrictSecpVectors(allocator: std.mem.Allocator) !void {
         },
     };
 
+    const verify_vectors = [_]SecpVerifyVector{
+        .{
+            .name = "strict_verify_v1",
+            .signing_hash_hex = "4a5cf8d6ee452e06633ebf65fb069a862885efce1a91718dfb26ffb49e0505c9",
+            .pubkey_hex = "03f38e8c09c2b4446a5d72d8050e8a16f6398d4ed9debace3defeb59e4aa670d9e",
+            .signature_hex = "30450221009381495b11ae66358704b255fc8fb4c32a326179aecde13a33a36916201b8faa02203da63c00a1d4ada3e0d1f178362572efd2640146a70e73d683ae8a5f876c72d8",
+        },
+        .{
+            .name = "strict_verify_v2",
+            .signing_hash_hex = "52fc53d5735a43a7eabeb56251ac2a6fa17f49e3fa160a23864f208e695d1249",
+            .pubkey_hex = "0239fe749408e0e82a084d8764dbd00a0c5954b9d15cb70888ce1c9cd547c5ac17",
+            .signature_hex = "3045022100be1288f1db489fbf09845db49947c18307771a1311852f762b8c48d8e088544c02207fd9b84ddae58afb018bf28bc95386097b9f214a540fb1dd3682dec2d736ff86",
+        },
+        .{
+            .name = "strict_verify_v3",
+            .signing_hash_hex = "6e842d6086c9edcd0da27eef13667cb1c838dd9d9c77b8364a5d36b5a069f2b4",
+            .pubkey_hex = "02ecc3cc13c0ddd58ccd1c75e06d0c1ef1b8f153a3123c96db87a5ec752d4103ee",
+            .signature_hex = "304402205c4933a114fbd4c9f2427182a529cd8f2f9584c293fa86b5218fcb6d9211b68f02203a4f9fc0576548a5819344192c994a7b69e2224daa457520b287dd0134828532",
+        },
+    };
+
     var first_hash: ?[32]u8 = null;
     var first_sig: ?[]u8 = null;
     var first_pub: ?[]u8 = null;
@@ -506,7 +534,7 @@ fn assertStrictSecpVectors(allocator: std.mem.Allocator) !void {
     defer if (first_pub) |p| allocator.free(p);
     defer if (second_pub) |p| allocator.free(p);
 
-    for (vectors, 0..) |vec, idx| {
+    for (signing_domain_vectors) |vec| {
         const canonical = try parseHexAlloc(allocator, vec.canonical_hex);
         defer allocator.free(canonical);
         const prefix = try parseHexAlloc(allocator, vec.signing_prefix_hex);
@@ -537,16 +565,20 @@ fn assertStrictSecpVectors(allocator: std.mem.Allocator) !void {
         std.debug.print("SIGNING_DOMAIN_CHECK {s} stx_ok=1 tx_hash_diff=1 wrong_prefix_diff=1\n", .{vec.name});
 
         const signature = try parseHexAlloc(allocator, vec.signature_hex);
-        defer if (idx != 0) allocator.free(signature);
+        defer allocator.free(signature);
         _ = try secp256k1.parseDERSignature(signature);
 
         std.debug.print("CRYPTO_POSITIVE_VECTOR {s} hash_ok=1 sig_len={d}\n", .{ vec.name, signature.len });
+    }
 
-        if (!isStrictCryptoEnabled()) continue;
-
+    if (!isStrictCryptoEnabled()) return;
+    for (verify_vectors, 0..) |vec, idx| {
+        const signing_hash = try parseHex32(vec.signing_hash_hex);
+        const signature = try parseHexAlloc(allocator, vec.signature_hex);
+        defer if (idx != 0) allocator.free(signature);
         const pubkey = try parseHexAlloc(allocator, vec.pubkey_hex);
         defer if (idx != 0 and idx != 1) allocator.free(pubkey);
-        const ok = try @import("crypto.zig").KeyPair.verify(pubkey, &signing_hash, signature, .secp256k1);
+        const ok = try secp256k1.verifySignature(pubkey, &signing_hash, signature);
         if (!ok) return error.StrictSecpVerifyFailed;
 
         if (idx == 0) {
@@ -558,7 +590,6 @@ fn assertStrictSecpVectors(allocator: std.mem.Allocator) !void {
         }
     }
 
-    if (!isStrictCryptoEnabled()) return;
     const base_hash = first_hash orelse return error.MissingStrictBaseVector;
     const base_sig = first_sig orelse return error.MissingStrictBaseVector;
     const base_pub = first_pub orelse return error.MissingStrictBaseVector;

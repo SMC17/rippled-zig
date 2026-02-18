@@ -12,22 +12,22 @@
   "strict_vectors": {
     "positive": [
       {
-        "name": "v1_uncompressed_sig72",
-        "pubkey_hex": "048699404dcbc4fbf18381b4dd7a291038330d1b68a0f499a05615c3d1c4a4f103367afcb6b35377552b5c2c505ebb1da1ff3fdcfdf24115abe13dcbb5c8229398",
-        "signature_hex": "3046022100eabd8871e5ec54cb2953bd03e8325921918d6d1cbb07b86c391f9ae63c8bb6d1022100cc621dae5186149b25f465e1c44d840404b11a94b789c6e0411a7f60386b282b",
-        "signing_hash_hex": "a4f2d3f63af8364de7341a0e22e5b4c3429ea09f82bed5c70284c6da43f0ee0f"
+        "name": "strict_verify_v1",
+        "pubkey_hex": "03f38e8c09c2b4446a5d72d8050e8a16f6398d4ed9debace3defeb59e4aa670d9e",
+        "signature_hex": "30450221009381495b11ae66358704b255fc8fb4c32a326179aecde13a33a36916201b8faa02203da63c00a1d4ada3e0d1f178362572efd2640146a70e73d683ae8a5f876c72d8",
+        "signing_hash_hex": "4a5cf8d6ee452e06633ebf65fb069a862885efce1a91718dfb26ffb49e0505c9"
       },
       {
-        "name": "v2_compressed_sig72",
-        "pubkey_hex": "0319c7dfcb8abd947d864dc6799741d32f6d2c7325472407ea0c373335732daf3a",
-        "signature_hex": "3046022100cb4528d4f60cd9dd7ee395bc719f0468bb8fe2976c16b9ed0ec10d682b3ec7c6022100d02c6ceaee5f750c2d123bdb8f0803009ebde2a31312ac3d332eec7f8b084f93",
-        "signing_hash_hex": "60e5289f93110f248697c9ed6ce1df68c84276c4285400f9621bc29e06a6164f"
+        "name": "strict_verify_v2",
+        "pubkey_hex": "0239fe749408e0e82a084d8764dbd00a0c5954b9d15cb70888ce1c9cd547c5ac17",
+        "signature_hex": "3045022100be1288f1db489fbf09845db49947c18307771a1311852f762b8c48d8e088544c02207fd9b84ddae58afb018bf28bc95386097b9f214a540fb1dd3682dec2d736ff86",
+        "signing_hash_hex": "52fc53d5735a43a7eabeb56251ac2a6fa17f49e3fa160a23864f208e695d1249"
       },
       {
-        "name": "v3_compressed_sig71",
-        "pubkey_hex": "0249d90465c15548c5819079420bdc7409e0f9ae43b5150de87a452adea369a39c",
-        "signature_hex": "3045022100af8126d584359ef6f7e35990478fac562a31651e2a35c9c478d56a22f33ea0fe02206181f8830026382efc74523f8fbea22d14507ae53457b2cd4ebc03ff5c97bd6a",
-        "signing_hash_hex": "f9a93b3ec683df7f5111d3ae4311d3d7a13fb6678b1a3513f21e76297a32ac48"
+        "name": "strict_verify_v3",
+        "pubkey_hex": "02ecc3cc13c0ddd58ccd1c75e06d0c1ef1b8f153a3123c96db87a5ec752d4103ee",
+        "signature_hex": "304402205c4933a114fbd4c9f2427182a529cd8f2f9584c293fa86b5218fcb6d9211b68f02203a4f9fc0576548a5819344192c994a7b69e2224daa457520b287dd0134828532",
+        "signing_hash_hex": "6e842d6086c9edcd0da27eef13667cb1c838dd9d9c77b8364a5d36b5a069f2b4"
       }
     ],
     "negative_controls": [
