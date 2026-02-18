@@ -165,6 +165,10 @@ Pass Criteria:
   - job: `Sim - Deterministic Local Cluster`,
   - runs on every PR/push and uploads simulation artifacts,
   - release summary now hard-fails when simulation gate is not `success`.
+- Tightened simulation gate with profile-based thresholds and fail-reason artifacts:
+  - new script: `scripts/gates/gate_sim.sh`,
+  - profiles: `pr` vs `nightly` with explicit threshold values,
+  - emits `sim-gate-report.json` and `failure.txt` for decision-grade diagnostics.
 
 ## Sign-Off
 - Engineering Lead: pending

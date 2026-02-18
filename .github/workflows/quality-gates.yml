@@ -186,23 +186,22 @@ jobs:
     runs-on: ubuntu-latest
     needs: [gate-c-parity]
     env:
+      GATE_SIM_PROFILE: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
       SIM_NODES: ${{ github.event_name == 'schedule' && '7' || '5' }}
       SIM_ROUNDS: ${{ github.event_name == 'schedule' && '50' || '20' }}
       SIM_SEED: "xrpl-agent-lab-v1"
       SIM_BASE_LEDGER_SEQ: "1000000"
       SIM_BASE_LATENCY_MS: "40"
       SIM_JITTER_MS: "25"
+      GATE_SIM_MIN_SUCCESS_RATE: ${{ github.event_name == 'schedule' && '35' || '30' }}
+      GATE_SIM_MAX_AVG_LATENCY_MS: ${{ github.event_name == 'schedule' && '60' || '70' }}
+      GATE_SIM_MIN_LATEST_LEDGER_SEQ: ${{ github.event_name == 'schedule' && '1000050' || '1000020' }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Run Deterministic Cluster Simulation
         run: |
-          scripts/sim/run_local_cluster.sh artifacts/sim-local
-          jq -e '.status == "pass"' artifacts/sim-local/simulation-summary.json > /dev/null
-          jq -e '.deterministic == true' artifacts/sim-local/simulation-summary.json > /dev/null
-          jq -e '.cluster.nodes >= 3' artifacts/sim-local/simulation-summary.json > /dev/null
-          jq -e '.cluster.rounds >= 10' artifacts/sim-local/simulation-summary.json > /dev/null
-          jq -e '.metrics.success_rate >= 30' artifacts/sim-local/simulation-summary.json > /dev/null
+          scripts/gates/gate_sim.sh artifacts/sim-local
 
       - name: Upload Simulation Artifacts
         uses: actions/upload-artifact@v4
@@ -303,6 +302,7 @@ jobs:
           d_trend_file="$(find artifacts -name trend-summary-7d.json | head -n 1 || true)"
           e_trend_file="$(find artifacts -name security-trend-summary-7d.json | head -n 1 || true)"
           sim_summary_file="$(find artifacts -name simulation-summary.json | head -n 1 || true)"
+          sim_gate_file="$(find artifacts -name sim-gate-report.json | head -n 1 || true)"
 
           {
             echo "# Ops Digest"
@@ -367,6 +367,11 @@ jobs:
               echo
               echo "### Sim"
               echo "- summary: unavailable"
+            fi
+            if [ -n "$sim_gate_file" ]; then
+              echo "- gate status: $(jq -r '.status // "n/a"' "$sim_gate_file")"
+              echo "- profile: $(jq -r '.profile // "n/a"' "$sim_gate_file")"
+              echo "- reason: $(jq -r '.reason // "none"' "$sim_gate_file")"
             fi
             echo
             if [ "${{ needs.gate-a-build-test.result }}" = "success" ] && \
