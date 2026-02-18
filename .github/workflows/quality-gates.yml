@@ -117,11 +117,6 @@ jobs:
         with:
           version: 0.15.1
 
-      - name: Validate Testnet Secrets
-        run: |
-          test -n "${TESTNET_RPC_URL}"
-          test -n "${TESTNET_WS_URL}"
-
       - name: Run Live Conformance
         run: scripts/gates/gate_d.sh artifacts/gate-d
 

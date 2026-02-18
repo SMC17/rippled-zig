@@ -30,7 +30,7 @@ pub const Security = struct {
                 // Check if window expired
                 if (now - limit.window_start > self.window_ms) {
                     // Reset window
-                    var new_limit = RateLimit{
+                    const new_limit = RateLimit{
                         .window_start = now,
                         .count = 1,
                     };
