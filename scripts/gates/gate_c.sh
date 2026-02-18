@@ -14,8 +14,13 @@ fi
 
 positive_crypto_vectors="$(grep -c '^CRYPTO_POSITIVE_VECTOR ' "$artifact_dir/parity.log" || true)"
 negative_crypto_vectors="$(grep -c '^CRYPTO_NEGATIVE_VECTOR ' "$artifact_dir/parity.log" || true)"
+signing_domain_checks="$(grep -c '^SIGNING_DOMAIN_CHECK ' "$artifact_dir/parity.log" || true)"
 if (( positive_crypto_vectors < 3 )); then
   echo "Gate C requires >=3 positive secp vectors, got $positive_crypto_vectors" >&2
+  exit 1
+fi
+if (( signing_domain_checks < 3 )); then
+  echo "Gate C requires >=3 signing-domain checks, got $signing_domain_checks" >&2
   exit 1
 fi
 if [[ "$strict_crypto" == "true" ]] && (( negative_crypto_vectors < 3 )); then
@@ -81,7 +86,8 @@ cat > "$artifact_dir/parity-report.json" <<JSON
   "strict_crypto": "$strict_crypto",
   "crypto_vectors": {
     "positive": $positive_crypto_vectors,
-    "negative": $negative_crypto_vectors
+    "negative": $negative_crypto_vectors,
+    "signing_domain": $signing_domain_checks
   },
   "checks": [
     "rpc-shape-suite",
@@ -91,7 +97,8 @@ cat > "$artifact_dir/parity-report.json" <<JSON
     "cross-fixture-consistency",
     "secp-fixture-signature-values",
     "negative-crypto-controls",
-    "strict-secp-vector-set-and-negative-controls"
+    "strict-secp-vector-set-and-negative-controls",
+    "signing-domain-guardrails"
   ]
 }
 JSON

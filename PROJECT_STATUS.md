@@ -124,6 +124,10 @@ Pass Criteria:
   - 3 positive known-good vectors (mixed compressed/uncompressed pubkeys, varied DER lengths),
   - 3 negative strict vectors (`tampered hash`, `tampered r/s`, `wrong pubkey`) expecting `verify=false`,
   - marker-based reporting/enforcement in `scripts/gates/gate_c.sh`.
+- Added signing-domain correctness guardrails in Gate C:
+  - each strict vector asserts `SHA512Half(STX || canonical)` equals expected signing hash,
+  - explicit regression checks require signing hash to differ from canonical-body hash and wrong-prefix hash,
+  - marker-based enforcement (`SIGNING_DOMAIN_CHECK`) in `scripts/gates/gate_c.sh`.
 - Tightened Gate D for richer evidence with profile metadata, explicit fail reason artifacts, endpoint health fields, and trend-point artifact output.
 - Added Gate D trend consolidation script `scripts/gates/gate_d_trend_merge.sh` for rolling 7-day summaries from prior artifacts.
 - Raised Gate E with profile-based fuzz budgets (`pr` vs `nightly`), seeded adversarial corpus markers, crash-free marker enforcement, and timing/budget artifacts.

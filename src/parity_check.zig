@@ -397,6 +397,21 @@ fn assertStrictSecpVectors(allocator: std.mem.Allocator) !void {
         const expected_hash = try parseHex32(vec.signing_hash_hex);
         if (!std.mem.eql(u8, &signing_hash, &expected_hash)) return error.StrictSigningHashMismatch;
 
+        // Signing-domain guardrails:
+        // 1) signing hash must differ from canonical-body hash,
+        // 2) signing hash must differ from wrong-prefix hash.
+        const tx_body_hash = @import("crypto.zig").Hash.sha512Half(canonical);
+        if (std.mem.eql(u8, &tx_body_hash, &signing_hash)) return error.SigningDomainConflatedWithBodyHash;
+
+        var wrong_prefix_blob = try allocator.alloc(u8, 4 + canonical.len);
+        defer allocator.free(wrong_prefix_blob);
+        @memset(wrong_prefix_blob[0..4], 0);
+        @memcpy(wrong_prefix_blob[4..], canonical);
+        const wrong_prefix_hash = @import("crypto.zig").Hash.sha512Half(wrong_prefix_blob);
+        if (std.mem.eql(u8, &wrong_prefix_hash, &signing_hash)) return error.SigningDomainConflatedWithWrongPrefix;
+
+        std.debug.print("SIGNING_DOMAIN_CHECK {s} stx_ok=1 tx_hash_diff=1 wrong_prefix_diff=1\n", .{vec.name});
+
         const signature = try parseHexAlloc(allocator, vec.signature_hex);
         defer if (idx != 0) allocator.free(signature);
         _ = try secp256k1.parseDERSignature(signature);
