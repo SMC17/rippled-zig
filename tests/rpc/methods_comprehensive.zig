@@ -125,3 +125,30 @@ test "RPC: ledger_current" {
 
     try std.testing.expect(std.mem.indexOf(u8, result, "ledger_current_index") != null);
 }
+
+test "RPC: agent control status and config" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    var methods = rpc_methods.RpcMethods.init(allocator, &lm, &state, &processor);
+
+    const set_result = try methods.agentConfigSet("fee_multiplier", "3");
+    defer allocator.free(set_result);
+    try std.testing.expect(std.mem.indexOf(u8, set_result, "\"status\": \"success\"") != null);
+
+    const get_result = try methods.agentConfigGet();
+    defer allocator.free(get_result);
+    try std.testing.expect(std.mem.indexOf(u8, get_result, "\"fee_multiplier\": 3") != null);
+
+    const status_result = try methods.agentStatus(9001);
+    defer allocator.free(status_result);
+    try std.testing.expect(std.mem.indexOf(u8, status_result, "\"agent_control\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, status_result, "\"uptime\": 9001") != null);
+}

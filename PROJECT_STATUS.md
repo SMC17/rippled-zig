@@ -145,6 +145,13 @@ Pass Criteria:
   - Gate C runs with `GATE_C_STRICT_CRYPTO=true` on schedule (and optional manual dispatch),
   - installs `libsecp256k1-dev` before strict verification runs.
 - Added Gate E trend consolidation script `scripts/gates/gate_e_trend_merge.sh` and per-run `security-trend-summary-7d.json` output.
+- Added initial agent control surface primitives in RPC layer:
+  - `agent_status` telemetry payload for machine-oriented control loops,
+  - `agent_config_get` for current control-plane parameters,
+  - `agent_config_set` with allowlisted mutable keys and range validation.
+- Added tests for agent control RPC primitives in:
+  - `src/rpc_methods.zig`,
+  - `tests/rpc/methods_comprehensive.zig`.
 
 ## Sign-Off
 - Engineering Lead: pending

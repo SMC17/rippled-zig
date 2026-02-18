@@ -258,12 +258,20 @@ pub const RpcMethod = enum {
     ping,
     random,
 
+    // Agent control methods
+    agent_status,
+    agent_config_get,
+    agent_config_set,
+
     pub fn fromString(str: []const u8) ?RpcMethod {
         const map = std.StaticStringMap(RpcMethod).initComptime(.{
             .{ "server_info", .server_info },
             .{ "ledger", .ledger },
             .{ "account_info", .account_info },
             .{ "ping", .ping },
+            .{ "agent_status", .agent_status },
+            .{ "agent_config_get", .agent_config_get },
+            .{ "agent_config_set", .agent_config_set },
         });
         return map.get(str);
     }
@@ -284,5 +292,6 @@ test "rpc server initialization" {
 test "rpc method from string" {
     try std.testing.expectEqual(RpcMethod.server_info, RpcMethod.fromString("server_info").?);
     try std.testing.expectEqual(RpcMethod.ledger, RpcMethod.fromString("ledger").?);
+    try std.testing.expectEqual(RpcMethod.agent_status, RpcMethod.fromString("agent_status").?);
     try std.testing.expectEqual(@as(?RpcMethod, null), RpcMethod.fromString("invalid"));
 }

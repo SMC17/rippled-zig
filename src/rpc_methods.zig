@@ -7,10 +7,18 @@ const rpc_format = @import("rpc_format.zig");
 
 /// Complete RPC method implementations
 pub const RpcMethods = struct {
+    pub const AgentControlConfig = struct {
+        max_peers: u32 = 21,
+        fee_multiplier: u32 = 1,
+        strict_crypto_required: bool = true,
+        allow_unl_updates: bool = false,
+    };
+
     allocator: std.mem.Allocator,
     ledger_manager: *ledger.LedgerManager,
     account_state: *ledger.AccountState,
     tx_processor: *transaction.TransactionProcessor,
+    agent_config: AgentControlConfig,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -23,6 +31,7 @@ pub const RpcMethods = struct {
             .ledger_manager = ledger_manager,
             .account_state = account_state,
             .tx_processor = tx_processor,
+            .agent_config = .{},
         };
     }
 
@@ -318,6 +327,98 @@ pub const RpcMethods = struct {
             \\}}
         , .{random_bytes[0..8]});
     }
+
+    /// agent_status - expose machine-oriented operational state for autonomous controllers
+    pub fn agentStatus(self: *RpcMethods, uptime: u64) ![]u8 {
+        const current_ledger = self.ledger_manager.getCurrentLedger();
+        const pending_count = self.tx_processor.getPendingTransactions().len;
+
+        return try std.fmt.allocPrint(self.allocator,
+            \\{{
+            \\  "result": {{
+            \\    "status": "success",
+            \\    "agent_control": {{
+            \\      "api_version": 1,
+            \\      "mode": "research",
+            \\      "strict_crypto_required": {s}
+            \\    }},
+            \\    "node_state": {{
+            \\      "uptime": {d},
+            \\      "validated_ledger_seq": {d},
+            \\      "pending_transactions": {d},
+            \\      "max_peers": {d},
+            \\      "allow_unl_updates": {s}
+            \\    }}
+            \\  }}
+            \\}}
+        , .{
+            if (self.agent_config.strict_crypto_required) "true" else "false",
+            uptime,
+            current_ledger.sequence,
+            pending_count,
+            self.agent_config.max_peers,
+            if (self.agent_config.allow_unl_updates) "true" else "false",
+        });
+    }
+
+    /// agent_config_get - retrieve control-plane configuration
+    pub fn agentConfigGet(self: *RpcMethods) ![]u8 {
+        return try std.fmt.allocPrint(self.allocator,
+            \\{{
+            \\  "result": {{
+            \\    "status": "success",
+            \\    "config": {{
+            \\      "max_peers": {d},
+            \\      "fee_multiplier": {d},
+            \\      "strict_crypto_required": {s},
+            \\      "allow_unl_updates": {s}
+            \\    }}
+            \\  }}
+            \\}}
+        , .{
+            self.agent_config.max_peers,
+            self.agent_config.fee_multiplier,
+            if (self.agent_config.strict_crypto_required) "true" else "false",
+            if (self.agent_config.allow_unl_updates) "true" else "false",
+        });
+    }
+
+    fn parseBoolLiteral(value: []const u8) !bool {
+        if (std.mem.eql(u8, value, "true")) return true;
+        if (std.mem.eql(u8, value, "false")) return false;
+        return error.InvalidBooleanValue;
+    }
+
+    /// agent_config_set - allowlisted mutable knobs for autonomous control loops
+    pub fn agentConfigSet(self: *RpcMethods, key: []const u8, value: []const u8) ![]u8 {
+        if (std.mem.eql(u8, key, "max_peers")) {
+            const parsed = std.fmt.parseInt(u32, value, 10) catch return error.InvalidConfigValue;
+            if (parsed < 5 or parsed > 200) return error.ConfigValueOutOfRange;
+            self.agent_config.max_peers = parsed;
+        } else if (std.mem.eql(u8, key, "fee_multiplier")) {
+            const parsed = std.fmt.parseInt(u32, value, 10) catch return error.InvalidConfigValue;
+            if (parsed < 1 or parsed > 100) return error.ConfigValueOutOfRange;
+            self.agent_config.fee_multiplier = parsed;
+        } else if (std.mem.eql(u8, key, "strict_crypto_required")) {
+            self.agent_config.strict_crypto_required = parseBoolLiteral(value) catch return error.InvalidConfigValue;
+        } else if (std.mem.eql(u8, key, "allow_unl_updates")) {
+            self.agent_config.allow_unl_updates = parseBoolLiteral(value) catch return error.InvalidConfigValue;
+        } else {
+            return error.UnsupportedConfigKey;
+        }
+
+        return try std.fmt.allocPrint(self.allocator,
+            \\{{
+            \\  "result": {{
+            \\    "status": "success",
+            \\    "updated": {{
+            \\      "key": "{s}",
+            \\      "value": "{s}"
+            \\    }}
+            \\  }}
+            \\}}
+        , .{ key, value });
+    }
 };
 
 test "rpc methods initialization" {
@@ -353,4 +454,47 @@ test "server info method" {
 
     try std.testing.expect(std.mem.indexOf(u8, result, "rippled-zig") != null);
     try std.testing.expect(std.mem.indexOf(u8, result, "12345") != null);
+}
+
+test "agent control config set/get and status" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    var methods = RpcMethods.init(allocator, &lm, &state, &processor);
+
+    const set_res = try methods.agentConfigSet("max_peers", "33");
+    defer allocator.free(set_res);
+    try std.testing.expect(std.mem.indexOf(u8, set_res, "\"status\": \"success\"") != null);
+
+    const get_res = try methods.agentConfigGet();
+    defer allocator.free(get_res);
+    try std.testing.expect(std.mem.indexOf(u8, get_res, "\"max_peers\": 33") != null);
+
+    const status_res = try methods.agentStatus(42);
+    defer allocator.free(status_res);
+    try std.testing.expect(std.mem.indexOf(u8, status_res, "\"api_version\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, status_res, "\"max_peers\": 33") != null);
+}
+
+test "agent config set rejects unsupported key" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    var methods = RpcMethods.init(allocator, &lm, &state, &processor);
+
+    try std.testing.expectError(error.UnsupportedConfigKey, methods.agentConfigSet("evil_key", "1"));
 }
