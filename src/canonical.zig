@@ -157,8 +157,6 @@ test "canonical ordering" {
 }
 
 test "field sorting" {
-    const allocator = std.testing.allocator;
-
     var fields = [_]FieldOrder{
         .{ .type_code = 0x60, .field_code = 8, .data = &[_]u8{} }, // UInt64
         .{ .type_code = 0x20, .field_code = 4, .data = &[_]u8{} }, // UInt32

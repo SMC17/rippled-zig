@@ -298,7 +298,6 @@ pub const RpcMethods = struct {
 
     /// ping - Health check
     pub fn ping(self: *RpcMethods) ![]u8 {
-        _ = self;
         return try self.allocator.dupe(u8,
             \\{
             \\  "result": {}

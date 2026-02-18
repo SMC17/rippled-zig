@@ -1,0 +1,183 @@
+name: Quality Gates
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      run_live_testnet:
+        description: "Run live testnet conformance gate (requires secrets/network)"
+        required: false
+        default: "false"
+      run_security_fuzz:
+        description: "Run extended security/fuzz gate"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate-a-build-test:
+    name: Gate A - Build/Test/Format
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig 0.15.1
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Verify Toolchain
+        run: |
+          zig version
+          test "$(zig version)" = "0.15.1"
+
+      - name: Run Gate A
+        run: scripts/gates/gate_a.sh artifacts/gate-a
+
+      - name: Upload Gate A Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-a-${{ matrix.os }}
+          path: |
+            artifacts/gate-a
+          retention-days: 14
+
+  gate-b-determinism:
+    name: Gate B - Deterministic Serialization/Hash
+    runs-on: ubuntu-latest
+    needs: [gate-a-build-test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig 0.15.1
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Run Determinism Suite
+        run: scripts/gates/gate_b.sh artifacts/gate-b
+
+      - name: Upload Gate B Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-b
+          path: artifacts/gate-b
+          retention-days: 14
+
+  gate-c-parity:
+    name: Gate C - Cross-Implementation Parity
+    runs-on: ubuntu-latest
+    needs: [gate-b-determinism]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig 0.15.1
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Run Parity Harness
+        run: scripts/gates/gate_c.sh artifacts/gate-c
+
+      - name: Upload Gate C Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-c
+          path: artifacts/gate-c
+          retention-days: 14
+
+  gate-d-live-testnet:
+    name: Gate D - Live Testnet Conformance
+    runs-on: ubuntu-latest
+    needs: [gate-c-parity]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live_testnet == 'true' }}
+    env:
+      TESTNET_RPC_URL: ${{ secrets.TESTNET_RPC_URL }}
+      TESTNET_WS_URL: ${{ secrets.TESTNET_WS_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig 0.15.1
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Validate Testnet Secrets
+        run: |
+          test -n "${TESTNET_RPC_URL}"
+          test -n "${TESTNET_WS_URL}"
+
+      - name: Run Live Conformance
+        run: scripts/gates/gate_d.sh artifacts/gate-d
+
+      - name: Upload Gate D Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-d
+          path: artifacts/gate-d
+          retention-days: 14
+
+  gate-e-security:
+    name: Gate E - Security/Fuzz/Static
+    runs-on: ubuntu-latest
+    needs: [gate-c-parity]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_security_fuzz == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig 0.15.1
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Run Security/Fuzz Suite
+        run: scripts/gates/gate_e.sh artifacts/gate-e
+
+      - name: Upload Gate E Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-e
+          path: artifacts/gate-e
+          retention-days: 14
+
+  release-readiness-summary:
+    name: Release Readiness Summary
+    runs-on: ubuntu-latest
+    needs:
+      - gate-a-build-test
+      - gate-b-determinism
+      - gate-c-parity
+      - gate-d-live-testnet
+      - gate-e-security
+    if: ${{ always() }}
+    steps:
+      - name: Summarize Gate Results
+        run: |
+          echo "Gate A: ${{ needs.gate-a-build-test.result }}"
+          echo "Gate B: ${{ needs.gate-b-determinism.result }}"
+          echo "Gate C: ${{ needs.gate-c-parity.result }}"
+          echo "Gate D: ${{ needs.gate-d-live-testnet.result }}"
+          echo "Gate E: ${{ needs.gate-e-security.result }}"
+
+          # Hard fail summary if any required gate failed.
+          # For standard PR/push runs, only A/B/C are required.
+          if [ "${{ needs.gate-a-build-test.result }}" != "success" ] || \
+             [ "${{ needs.gate-b-determinism.result }}" != "success" ] || \
+             [ "${{ needs.gate-c-parity.result }}" != "success" ]; then
+            echo "Required gates failed"
+            exit 1
+          fi
