@@ -130,8 +130,8 @@ pub const RpcServer = struct {
                 body_start = idx;
                 body_offset = 2;
             }
-            const start = body_start orelse return error.NoBody;
-            const body = request[start + body_offset ..];
+            const body_idx = body_start orelse return error.NoBody;
+            const body = request[body_idx + body_offset ..];
 
             return self.handleJsonRpc(body);
         }
