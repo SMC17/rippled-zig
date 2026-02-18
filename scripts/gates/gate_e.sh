@@ -26,7 +26,7 @@ cat > "$artifact_dir/security-review.md" <<MD
 - Runtime safety disabled sites: 0
 - panic() call sites in src: $panic_count
 - Security test suite executed:
-  - src/security_gate.zig
+  - src/security_check.zig
 MD
 
 cat > "$artifact_dir/fuzz-summary.txt" <<TXT

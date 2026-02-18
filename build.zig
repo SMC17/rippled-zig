@@ -55,64 +55,63 @@ pub fn build(b: *std.Build) void {
     }
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
-    run_unit_tests.stdio = .inherit;
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
 
     // Gate B: deterministic serialization/hash checks
     const gate_b_module = b.createModule(.{
-        .root_source_file = b.path("src/determinism_gate.zig"),
+        .root_source_file = b.path("src/determinism_check.zig"),
         .target = target,
         .optimize = optimize,
     });
     gate_b_module.addOptions("build_options", build_options);
-    const gate_b_tests = b.addTest(.{
+    const gate_b_exe = b.addExecutable(.{
+        .name = "gate-b-check",
         .root_module = gate_b_module,
     });
-    gate_b_tests.linkLibC();
+    gate_b_exe.linkLibC();
     if (use_secp256k1) {
-        gate_b_tests.linkSystemLibrary("secp256k1");
+        gate_b_exe.linkSystemLibrary("secp256k1");
     }
-    const run_gate_b_tests = b.addRunArtifact(gate_b_tests);
-    run_gate_b_tests.stdio = .inherit;
+    const run_gate_b_tests = b.addRunArtifact(gate_b_exe);
     const gate_b_step = b.step("gate-b", "Run Gate B deterministic checks");
     gate_b_step.dependOn(&run_gate_b_tests.step);
 
     // Gate C: parity and contract checks
     const gate_c_module = b.createModule(.{
-        .root_source_file = b.path("src/parity_gate.zig"),
+        .root_source_file = b.path("src/parity_check.zig"),
         .target = target,
         .optimize = optimize,
     });
     gate_c_module.addOptions("build_options", build_options);
-    const gate_c_tests = b.addTest(.{
+    const gate_c_exe = b.addExecutable(.{
+        .name = "gate-c-check",
         .root_module = gate_c_module,
     });
-    gate_c_tests.linkLibC();
+    gate_c_exe.linkLibC();
     if (use_secp256k1) {
-        gate_c_tests.linkSystemLibrary("secp256k1");
+        gate_c_exe.linkSystemLibrary("secp256k1");
     }
-    const run_gate_c_tests = b.addRunArtifact(gate_c_tests);
-    run_gate_c_tests.stdio = .inherit;
+    const run_gate_c_tests = b.addRunArtifact(gate_c_exe);
     const gate_c_step = b.step("gate-c", "Run Gate C parity checks");
     gate_c_step.dependOn(&run_gate_c_tests.step);
 
     // Gate E: security checks
     const gate_e_module = b.createModule(.{
-        .root_source_file = b.path("src/security_gate.zig"),
+        .root_source_file = b.path("src/security_check.zig"),
         .target = target,
         .optimize = optimize,
     });
     gate_e_module.addOptions("build_options", build_options);
-    const gate_e_tests = b.addTest(.{
+    const gate_e_exe = b.addExecutable(.{
+        .name = "gate-e-check",
         .root_module = gate_e_module,
     });
-    gate_e_tests.linkLibC();
+    gate_e_exe.linkLibC();
     if (use_secp256k1) {
-        gate_e_tests.linkSystemLibrary("secp256k1");
+        gate_e_exe.linkSystemLibrary("secp256k1");
     }
-    const run_gate_e_tests = b.addRunArtifact(gate_e_tests);
-    run_gate_e_tests.stdio = .inherit;
+    const run_gate_e_tests = b.addRunArtifact(gate_e_exe);
     const gate_e_step = b.step("gate-e", "Run Gate E security checks");
     gate_e_step.dependOn(&run_gate_e_tests.step);
 }
