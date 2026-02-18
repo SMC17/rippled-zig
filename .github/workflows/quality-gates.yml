@@ -196,6 +196,11 @@ jobs:
       GATE_SIM_MIN_SUCCESS_RATE: ${{ github.event_name == 'schedule' && '35' || '30' }}
       GATE_SIM_MAX_AVG_LATENCY_MS: ${{ github.event_name == 'schedule' && '60' || '70' }}
       GATE_SIM_MIN_LATEST_LEDGER_SEQ: ${{ github.event_name == 'schedule' && '1000050' || '1000020' }}
+      GATE_SIM_TREND_INPUT_DIR: artifacts/sim-local
+      GATE_SIM_TREND_MIN_SUCCESS_RATE: ${{ github.event_name == 'schedule' && '99' || '95' }}
+      GATE_SIM_TREND_MIN_AVG_SUCCESS_RATE: ${{ github.event_name == 'schedule' && '35' || '30' }}
+      GATE_SIM_TREND_MAX_P95_AVG_LATENCY_MS: ${{ github.event_name == 'schedule' && '60' || '75' }}
+      GATE_SIM_TREND_MIN_AVG_NODES: ${{ github.event_name == 'schedule' && '7' || '5' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -303,6 +308,7 @@ jobs:
           e_trend_file="$(find artifacts -name security-trend-summary-7d.json | head -n 1 || true)"
           sim_summary_file="$(find artifacts -name simulation-summary.json | head -n 1 || true)"
           sim_gate_file="$(find artifacts -name sim-gate-report.json | head -n 1 || true)"
+          sim_trend_file="$(find artifacts -name sim-trend-summary-7d.json | head -n 1 || true)"
 
           {
             echo "# Ops Digest"
@@ -372,6 +378,12 @@ jobs:
               echo "- gate status: $(jq -r '.status // "n/a"' "$sim_gate_file")"
               echo "- profile: $(jq -r '.profile // "n/a"' "$sim_gate_file")"
               echo "- reason: $(jq -r '.reason // "none"' "$sim_gate_file")"
+            fi
+            if [ -n "$sim_trend_file" ]; then
+              echo "- trend success_rate: $(jq -r '.summary.success_rate // "n/a"' "$sim_trend_file")"
+              echo "- trend avg success_rate: $(jq -r '.summary.avg_success_rate // "n/a"' "$sim_trend_file")"
+              echo "- trend p95 avg latency (ms): $(jq -r '.summary.p95_avg_latency_ms // "n/a"' "$sim_trend_file")"
+              echo "- trend avg nodes: $(jq -r '.summary.avg_nodes // "n/a"' "$sim_trend_file")"
             fi
             echo
             if [ "${{ needs.gate-a-build-test.result }}" = "success" ] && \

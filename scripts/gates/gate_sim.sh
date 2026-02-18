@@ -113,3 +113,51 @@ cat > "$artifact_dir/sim-thresholds.json" <<JSON
 JSON
 
 cp "$artifact_dir/sim-thresholds.json" "$artifact_dir/sim-gate-report.json"
+
+cat > "$artifact_dir/sim-trend-point.json" <<JSON
+{
+  "timestamp_utc": "$ts_iso",
+  "profile": "$profile",
+  "status": "pass",
+  "observed": {
+    "nodes": $nodes,
+    "rounds": $rounds,
+    "success_rate": $success_rate,
+    "avg_latency_ms": $avg_latency_ms,
+    "latest_ledger_seq": $latest_ledger_seq
+  }
+}
+JSON
+
+if [[ -n "${GATE_SIM_TREND_INPUT_DIR:-}" ]]; then
+  bash scripts/gates/gate_sim_trend_merge.sh \
+    "$GATE_SIM_TREND_INPUT_DIR" \
+    "$artifact_dir/sim-trend-summary-7d.json" \
+    "${GATE_SIM_TREND_MAX_POINTS:-200}"
+
+  trend_status="$(jq -r '.status // "unknown"' "$artifact_dir/sim-trend-summary-7d.json")"
+  if [[ "$trend_status" == "ok" ]]; then
+    trend_min_success_rate="${GATE_SIM_TREND_MIN_SUCCESS_RATE:-95}"
+    trend_min_avg_success_rate="${GATE_SIM_TREND_MIN_AVG_SUCCESS_RATE:-35}"
+    trend_max_p95_avg_latency_ms="${GATE_SIM_TREND_MAX_P95_AVG_LATENCY_MS:-75}"
+    trend_min_avg_nodes="${GATE_SIM_TREND_MIN_AVG_NODES:-$sim_nodes}"
+
+    trend_success_rate="$(jq -r '.summary.success_rate' "$artifact_dir/sim-trend-summary-7d.json")"
+    trend_avg_success_rate="$(jq -r '.summary.avg_success_rate' "$artifact_dir/sim-trend-summary-7d.json")"
+    trend_p95_latency="$(jq -r '.summary.p95_avg_latency_ms' "$artifact_dir/sim-trend-summary-7d.json")"
+    trend_avg_nodes="$(jq -r '.summary.avg_nodes' "$artifact_dir/sim-trend-summary-7d.json")"
+
+    if ! awk -v got="$trend_success_rate" -v min="$trend_min_success_rate" 'BEGIN { exit !(got+0 >= min+0) }'; then
+      fail "Sim trend success_rate below threshold: ${trend_success_rate}% < ${trend_min_success_rate}%"
+    fi
+    if ! awk -v got="$trend_avg_success_rate" -v min="$trend_min_avg_success_rate" 'BEGIN { exit !(got+0 >= min+0) }'; then
+      fail "Sim trend avg success_rate below threshold: ${trend_avg_success_rate}% < ${trend_min_avg_success_rate}%"
+    fi
+    if ! awk -v got="$trend_p95_latency" -v max="$trend_max_p95_avg_latency_ms" 'BEGIN { exit !(got+0 <= max+0) }'; then
+      fail "Sim trend p95 avg latency above threshold: ${trend_p95_latency}ms > ${trend_max_p95_avg_latency_ms}ms"
+    fi
+    if ! awk -v got="$trend_avg_nodes" -v min="$trend_min_avg_nodes" 'BEGIN { exit !(got+0 >= min+0) }'; then
+      fail "Sim trend avg nodes below threshold: ${trend_avg_nodes} < ${trend_min_avg_nodes}"
+    fi
+  fi
+fi

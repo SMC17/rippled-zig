@@ -169,6 +169,10 @@ Pass Criteria:
   - new script: `scripts/gates/gate_sim.sh`,
   - profiles: `pr` vs `nightly` with explicit threshold values,
   - emits `sim-gate-report.json` and `failure.txt` for decision-grade diagnostics.
+- Added simulation 7-day trend consolidation and threshold enforcement:
+  - new script: `scripts/gates/gate_sim_trend_merge.sh`,
+  - per-run `sim-trend-point.json` and `sim-trend-summary-7d.json`,
+  - gate fails on trend drift (success-rate, avg success-rate, p95 latency, avg nodes).
 
 ## Sign-Off
 - Engineering Lead: pending
