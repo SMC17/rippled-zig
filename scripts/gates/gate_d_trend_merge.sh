@@ -49,6 +49,14 @@ jq -n \
   --slurpfile points "$points_json" \
   --slurpfile conf "$conf_json" '
   def to_num: if type=="number" then . else (tonumber? // null) end;
+  def p95(values):
+    (values | map(to_num) | map(select(. != null)) | sort) as $v |
+    if ($v | length) == 0 then null
+    else
+      ($v | length) as $n |
+      (((($n * 95 + 99) / 100) | floor) - 1) as $idx |
+      $v[(if $idx < 0 then 0 else $idx end)]
+    end;
   def norm_status:
     if .=="pass" or .=="success" then "pass"
     elif .=="fail" or .=="failure" then "fail"
@@ -79,6 +87,15 @@ jq -n \
           server_info: (($p_tail | map(.latency_s.server_info | to_num) | map(select(. != null)) | add) / (($p_tail | map(.latency_s.server_info | to_num) | map(select(. != null)) | length) // 1)),
           fee: (($p_tail | map(.latency_s.fee | to_num) | map(select(. != null)) | add) / (($p_tail | map(.latency_s.fee | to_num) | map(select(. != null)) | length) // 1)),
           ledger: (($p_tail | map(.latency_s.ledger | to_num) | map(select(. != null)) | add) / (($p_tail | map(.latency_s.ledger | to_num) | map(select(. != null)) | length) // 1))
+        }
+        end
+      ),
+      p95_latency_s: (
+        if ($p_tail | length) == 0 then null
+        else {
+          server_info: p95($p_tail | map(.latency_s.server_info)),
+          fee: p95($p_tail | map(.latency_s.fee)),
+          ledger: p95($p_tail | map(.latency_s.ledger))
         }
         end
       ),

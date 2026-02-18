@@ -126,6 +126,10 @@ jobs:
       GATE_D_PROFILE: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
       GATE_D_MAX_LATENCY_S: ${{ github.event_name == 'schedule' && '3' || '5' }}
       GATE_D_TREND_INPUT_DIR: artifacts/gate-d
+      GATE_D_TREND_MIN_SUCCESS_RATE: ${{ github.event_name == 'schedule' && '99' || '95' }}
+      GATE_D_TREND_MAX_P95_SERVER_INFO_S: ${{ github.event_name == 'schedule' && '3' || '5' }}
+      GATE_D_TREND_MAX_P95_FEE_S: ${{ github.event_name == 'schedule' && '3' || '5' }}
+      GATE_D_TREND_MAX_P95_LEDGER_S: ${{ github.event_name == 'schedule' && '3' || '5' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -153,6 +157,10 @@ jobs:
       GATE_E_MIN_FUZZ_CASES: ${{ github.event_name == 'schedule' && '100000' || '25000' }}
       GATE_E_MAX_RUNTIME_S: ${{ github.event_name == 'schedule' && '60' || '20' }}
       GATE_E_TREND_INPUT_DIR: artifacts/gate-e
+      GATE_E_TREND_MIN_SUCCESS_RATE: ${{ github.event_name == 'schedule' && '99' || '95' }}
+      GATE_E_TREND_MIN_CRASH_FREE_RATE: "100"
+      GATE_E_TREND_MAX_P95_RUNTIME_S: ${{ github.event_name == 'schedule' && '60' || '20' }}
+      GATE_E_TREND_MIN_AVG_FUZZ_CASES: ${{ github.event_name == 'schedule' && '100000' || '25000' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -182,6 +190,11 @@ jobs:
       - gate-e-security
     if: ${{ always() }}
     steps:
+      - name: Download Gate Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
       - name: Summarize Gate Results
         run: |
           echo "Gate A: ${{ needs.gate-a-build-test.result }}"
@@ -204,3 +217,66 @@ jobs:
             echo "Gate D failed"
             exit 1
           fi
+
+      - name: Build Ops Digest
+        run: |
+          ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          d_trend_file="$(find artifacts -name trend-summary-7d.json | head -n 1 || true)"
+          e_trend_file="$(find artifacts -name security-trend-summary-7d.json | head -n 1 || true)"
+
+          {
+            echo "# Ops Digest"
+            echo
+            echo "- Timestamp (UTC): $ts"
+            echo "- Workflow: Quality Gates"
+            echo
+            echo "## Gate Results"
+            echo "- Gate A: ${{ needs.gate-a-build-test.result }}"
+            echo "- Gate B: ${{ needs.gate-b-determinism.result }}"
+            echo "- Gate C: ${{ needs.gate-c-parity.result }}"
+            echo "- Gate D: ${{ needs.gate-d-live-testnet.result }}"
+            echo "- Gate E: ${{ needs.gate-e-security.result }}"
+            echo
+            echo "## Trend Thresholds"
+            if [ -n "$d_trend_file" ]; then
+              echo "### Gate D"
+              echo "- success_rate: $(jq -r '.summary.success_rate // "n/a"' "$d_trend_file")"
+              echo "- p95 server_info latency: $(jq -r '.summary.p95_latency_s.server_info // "n/a"' "$d_trend_file")"
+              echo "- p95 fee latency: $(jq -r '.summary.p95_latency_s.fee // "n/a"' "$d_trend_file")"
+              echo "- p95 ledger latency: $(jq -r '.summary.p95_latency_s.ledger // "n/a"' "$d_trend_file")"
+            else
+              echo "### Gate D"
+              echo "- trend summary: unavailable"
+            fi
+            if [ -n "$e_trend_file" ]; then
+              echo
+              echo "### Gate E"
+              echo "- success_rate: $(jq -r '.summary.success_rate // "n/a"' "$e_trend_file")"
+              echo "- crash_free_rate: $(jq -r '.summary.crash_free_rate // "n/a"' "$e_trend_file")"
+              echo "- p95 runtime: $(jq -r '.summary.p95_runtime_s // "n/a"' "$e_trend_file")"
+              echo "- avg fuzz cases: $(jq -r '.summary.avg_fuzz_cases // "n/a"' "$e_trend_file")"
+            else
+              echo
+              echo "### Gate E"
+              echo "- trend summary: unavailable"
+            fi
+            echo
+            if [ "${{ needs.gate-a-build-test.result }}" = "success" ] && \
+               [ "${{ needs.gate-b-determinism.result }}" = "success" ] && \
+               [ "${{ needs.gate-c-parity.result }}" = "success" ] && \
+               [ "${{ needs.gate-e-security.result }}" = "success" ] && \
+               [ "${{ needs.gate-d-live-testnet.result }}" != "failure" ]; then
+              echo "## Run Decision"
+              echo "- PASS: quality gates satisfied for this run."
+            else
+              echo "## Run Decision"
+              echo "- FAIL: one or more required quality gates failed."
+            fi
+          } > ops-digest.md
+
+      - name: Upload Ops Digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: ops-digest
+          path: ops-digest.md
+          retention-days: 14

@@ -32,6 +32,14 @@ jq -n \
   --arg input_dir "$input_dir" \
   --slurpfile metrics "$metrics_json" '
   def to_num: if type=="number" then . else (tonumber? // null) end;
+  def p95(values):
+    (values | map(to_num) | map(select(. != null)) | sort) as $v |
+    if ($v | length) == 0 then null
+    else
+      ($v | length) as $n |
+      (((($n * 95 + 99) / 100) | floor) - 1) as $idx |
+      $v[(if $idx < 0 then 0 else $idx end)]
+    end;
   ($metrics[0] // []) as $all |
   ($all | map(select(.timestamp_utc != null)) | sort_by(.timestamp_utc) | reverse | .[:$max_points]) as $tail |
   {
@@ -55,7 +63,13 @@ jq -n \
         else (($tail | map(.observed.fuzz_cases | to_num) | map(select(. != null)) | add) / (($tail | map(.observed.fuzz_cases | to_num) | map(select(. != null)) | length) // 1))
         end
       ),
-      crash_free_failures: ($tail | map(select((.observed.crash_free | to_num) != 1)) | length)
+      p95_runtime_s: p95($tail | map(.observed.runtime_s)),
+      crash_free_failures: ($tail | map(select((.observed.crash_free | to_num) != 1)) | length),
+      crash_free_rate: (
+        if ($tail | length) == 0 then null
+        else (((($tail | map(select((.observed.crash_free | to_num) == 1)) | length) / ($tail | length)) * 100))
+        end
+      )
     },
     latest_metrics: $tail
   }

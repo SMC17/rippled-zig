@@ -235,5 +235,31 @@ if [[ -n "${GATE_D_TREND_INPUT_DIR:-}" ]]; then
   scripts/gates/gate_d_trend_merge.sh \
     "$GATE_D_TREND_INPUT_DIR" \
     "$artifact_dir/trend-summary-7d.json" \
-    "${GATE_D_TREND_MAX_POINTS:-200}" || true
+    "${GATE_D_TREND_MAX_POINTS:-200}"
+
+  trend_min_success_rate="${GATE_D_TREND_MIN_SUCCESS_RATE:-99}"
+  trend_max_p95_server_info="${GATE_D_TREND_MAX_P95_SERVER_INFO_S:-$max_latency_s}"
+  trend_max_p95_fee="${GATE_D_TREND_MAX_P95_FEE_S:-$max_latency_s}"
+  trend_max_p95_ledger="${GATE_D_TREND_MAX_P95_LEDGER_S:-$max_latency_s}"
+
+  trend_status="$(jq -r '.status // "unknown"' "$artifact_dir/trend-summary-7d.json")"
+  if [[ "$trend_status" == "ok" ]]; then
+    success_rate="$(jq -r '.summary.success_rate' "$artifact_dir/trend-summary-7d.json")"
+    p95_server_info="$(jq -r '.summary.p95_latency_s.server_info' "$artifact_dir/trend-summary-7d.json")"
+    p95_fee="$(jq -r '.summary.p95_latency_s.fee' "$artifact_dir/trend-summary-7d.json")"
+    p95_ledger="$(jq -r '.summary.p95_latency_s.ledger' "$artifact_dir/trend-summary-7d.json")"
+
+    if ! awk -v got="$success_rate" -v min="$trend_min_success_rate" 'BEGIN { exit !(got+0 >= min+0) }'; then
+      fail "Gate D trend success_rate below threshold: ${success_rate}% < ${trend_min_success_rate}%"
+    fi
+    if ! awk -v got="$p95_server_info" -v max="$trend_max_p95_server_info" 'BEGIN { exit !(got+0 <= max+0) }'; then
+      fail "Gate D trend p95 server_info latency above threshold: ${p95_server_info}s > ${trend_max_p95_server_info}s"
+    fi
+    if ! awk -v got="$p95_fee" -v max="$trend_max_p95_fee" 'BEGIN { exit !(got+0 <= max+0) }'; then
+      fail "Gate D trend p95 fee latency above threshold: ${p95_fee}s > ${trend_max_p95_fee}s"
+    fi
+    if ! awk -v got="$p95_ledger" -v max="$trend_max_p95_ledger" 'BEGIN { exit !(got+0 <= max+0) }'; then
+      fail "Gate D trend p95 ledger latency above threshold: ${p95_ledger}s > ${trend_max_p95_ledger}s"
+    fi
+  fi
 fi

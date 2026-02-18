@@ -186,5 +186,35 @@ if [[ -n "${GATE_E_TREND_INPUT_DIR:-}" ]]; then
   scripts/gates/gate_e_trend_merge.sh \
     "$GATE_E_TREND_INPUT_DIR" \
     "$artifact_dir/security-trend-summary-7d.json" \
-    "${GATE_E_TREND_MAX_POINTS:-200}" || true
+    "${GATE_E_TREND_MAX_POINTS:-200}"
+
+  trend_min_success_rate="${GATE_E_TREND_MIN_SUCCESS_RATE:-99}"
+  trend_min_crash_free_rate="${GATE_E_TREND_MIN_CRASH_FREE_RATE:-100}"
+  trend_max_p95_runtime_s="${GATE_E_TREND_MAX_P95_RUNTIME_S:-$max_runtime_s}"
+  trend_min_avg_fuzz_cases="${GATE_E_TREND_MIN_AVG_FUZZ_CASES:-$min_fuzz_cases}"
+
+  trend_status="$(jq -r '.status // "unknown"' "$artifact_dir/security-trend-summary-7d.json")"
+  if [[ "$trend_status" == "ok" ]]; then
+    success_rate="$(jq -r '.summary.success_rate' "$artifact_dir/security-trend-summary-7d.json")"
+    crash_free_rate="$(jq -r '.summary.crash_free_rate' "$artifact_dir/security-trend-summary-7d.json")"
+    p95_runtime_s="$(jq -r '.summary.p95_runtime_s' "$artifact_dir/security-trend-summary-7d.json")"
+    avg_fuzz_cases="$(jq -r '.summary.avg_fuzz_cases' "$artifact_dir/security-trend-summary-7d.json")"
+
+    if ! awk -v got="$success_rate" -v min="$trend_min_success_rate" 'BEGIN { exit !(got+0 >= min+0) }'; then
+      echo "Gate E trend success_rate below threshold: ${success_rate}% < ${trend_min_success_rate}%" | tee "$artifact_dir/failure.txt"
+      exit 1
+    fi
+    if ! awk -v got="$crash_free_rate" -v min="$trend_min_crash_free_rate" 'BEGIN { exit !(got+0 >= min+0) }'; then
+      echo "Gate E trend crash_free_rate below threshold: ${crash_free_rate}% < ${trend_min_crash_free_rate}%" | tee "$artifact_dir/failure.txt"
+      exit 1
+    fi
+    if ! awk -v got="$p95_runtime_s" -v max="$trend_max_p95_runtime_s" 'BEGIN { exit !(got+0 <= max+0) }'; then
+      echo "Gate E trend p95 runtime above threshold: ${p95_runtime_s}s > ${trend_max_p95_runtime_s}s" | tee "$artifact_dir/failure.txt"
+      exit 1
+    fi
+    if ! awk -v got="$avg_fuzz_cases" -v min="$trend_min_avg_fuzz_cases" 'BEGIN { exit !(got+0 >= min+0) }'; then
+      echo "Gate E trend avg fuzz below threshold: ${avg_fuzz_cases} < ${trend_min_avg_fuzz_cases}" | tee "$artifact_dir/failure.txt"
+      exit 1
+    fi
+  fi
 fi
