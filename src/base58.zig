@@ -31,7 +31,8 @@ pub const Base58 = struct {
         // Convert to base58
         var num = try std.ArrayList(u8).initCapacity(allocator, data.len);
         defer num.deinit(allocator);
-        try num.appendSlice(allocator, data);
+        // Skip leading zeros for conversion math; they are re-added as alphabet[0] prefix.
+        try num.appendSlice(allocator, data[zeros..]);
 
         while (num.items.len > 0 and num.items[0] != 0) {
             var carry: u32 = 0;
@@ -66,7 +67,8 @@ pub const Base58 = struct {
 
         // Count leading '1's
         var zeros: usize = 0;
-        for (str) |char| {
+        // Skip leading zero characters for conversion math; they are re-added as 0x00 bytes.
+        for (str[zeros..]) |char| {
             if (char != alphabet[0]) break;
             zeros += 1;
         }
