@@ -98,6 +98,15 @@ pub fn main() !void {
         "../../../../etc/passwd", // path traversal-like payload
         "{\"json\":\"payload\"}", // structured input
     };
+    const nightly_extra_corpus = [_][]const u8{
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", // max-ish alpha payload
+        "0000000000000000000000000000000000000000000000000000000000000000", // dense numeric/hex
+        "\n\r\t\n\r\t", // control chars allowed set
+        "%00%2e%2e%2f", // encoded traversal/null bytes
+        "\\x00\\x01\\x7f\\xff", // escaped binary-like patterns
+        "{\"nested\":{\"array\":[1,2,3],\"obj\":{\"k\":\"v\"}}}", // deep structured
+    };
+    const is_nightly = std.mem.eql(u8, build_options.gate_e_profile, "nightly");
     var fuzz_cases_executed: u32 = 0;
     var buf: [64]u8 = undefined;
 
@@ -105,6 +114,13 @@ pub fn main() !void {
         _ = security.Security.InputValidator.validateString(seed, 64) catch {};
         _ = security.Security.InputValidator.validateHex(seed) catch {};
         _ = security.Security.InputValidator.validateNumber(seed, 0, 1000) catch {};
+    }
+    if (is_nightly) {
+        for (nightly_extra_corpus) |seed| {
+            _ = security.Security.InputValidator.validateString(seed, 128) catch {};
+            _ = security.Security.InputValidator.validateHex(seed) catch {};
+            _ = security.Security.InputValidator.validateNumber(seed, -1000, 1000) catch {};
+        }
     }
 
     while (fuzz_cases_executed < fuzz_cases_target) : (fuzz_cases_executed += 1) {
@@ -116,8 +132,9 @@ pub fn main() !void {
         _ = security.Security.InputValidator.validateNumber("123", 0, 1000) catch {};
     }
 
+    const total_corpus_seeds = corpus.len + if (is_nightly) nightly_extra_corpus.len else 0;
     std.debug.print("FUZZ_PROFILE: {s}\n", .{build_options.gate_e_profile});
-    std.debug.print("CORPUS_SEEDS: {d}\n", .{corpus.len});
+    std.debug.print("CORPUS_SEEDS: {d}\n", .{total_corpus_seeds});
     std.debug.print("CRASH_FREE: 1\n", .{});
     std.debug.print("FUZZ_CASES: {d}\n", .{fuzz_cases_executed});
 }

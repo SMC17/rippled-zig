@@ -3,9 +3,14 @@ set -euo pipefail
 
 artifact_dir="${1:-artifacts/gate-c}"
 mkdir -p "$artifact_dir"
+strict_crypto="${GATE_C_STRICT_CRYPTO:-false}"
 
 # Parity-focused suite through build graph (injects build options).
-zig build gate-c 2>&1 | tee "$artifact_dir/parity.log"
+if [[ "$strict_crypto" == "true" ]]; then
+  zig build -Dsecp256k1=true gate-c 2>&1 | tee "$artifact_dir/parity.log"
+else
+  zig build gate-c 2>&1 | tee "$artifact_dir/parity.log"
+fi
 
 # Basic fixture contract checks (shape-level parity with rippled responses).
 jq -e '.result.info.validated_ledger.seq != null' test_data/server_info.json > /dev/null
@@ -62,13 +67,16 @@ cat > "$artifact_dir/parity-report.json" <<JSON
 {
   "gate": "C",
   "status": "pass",
+  "strict_crypto": "$strict_crypto",
   "checks": [
     "rpc-shape-suite",
     "fixture-contracts",
     "snapshot-field-values",
     "snapshot-validated-ledger-seq-hash",
     "cross-fixture-consistency",
-    "secp-fixture-signature-values"
+    "secp-fixture-signature-values",
+    "negative-crypto-controls",
+    "strict-secp-vector-hash-and-optional-verify"
   ]
 }
 JSON

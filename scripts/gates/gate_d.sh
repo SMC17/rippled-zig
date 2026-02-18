@@ -230,3 +230,10 @@ cat > "$artifact_dir/trend-point.json" <<JSON
   }
 }
 JSON
+
+if [[ -n "${GATE_D_TREND_INPUT_DIR:-}" ]]; then
+  scripts/gates/gate_d_trend_merge.sh \
+    "$GATE_D_TREND_INPUT_DIR" \
+    "$artifact_dir/trend-summary-7d.json" \
+    "${GATE_D_TREND_MAX_POINTS:-200}" || true
+fi

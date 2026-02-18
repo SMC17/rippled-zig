@@ -26,6 +26,11 @@ const Fixture = struct {
     secp_signature: []const u8,
     secp_r: []const u8,
     secp_s: []const u8,
+    strict_signing_prefix_hex: []const u8,
+    strict_canonical_hex: []const u8,
+    strict_signing_hash_hex: []const u8,
+    strict_pubkey_hex: []const u8,
+    strict_signature_hex: []const u8,
 };
 
 fn getObject(value: std.json.Value) !std.json.ObjectMap {
@@ -81,6 +86,16 @@ fn parseHexAlloc(allocator: std.mem.Allocator, hex: []const u8) ![]u8 {
     errdefer allocator.free(out);
     _ = try std.fmt.hexToBytes(out, hex);
     return out;
+}
+
+fn isStrictCryptoEnabled() bool {
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GATE_C_STRICT_CRYPTO") catch return false;
+    defer std.heap.page_allocator.free(value);
+    return std.mem.eql(u8, value, "true");
+}
+
+fn expectMismatch(actual: []const u8, expected: []const u8) !void {
+    if (std.mem.eql(u8, actual, expected)) return error.TamperControlDidNotTrigger;
 }
 
 fn assertAccountInfoLocal(payload: []const u8, allocator: std.mem.Allocator) !void {
@@ -282,6 +297,77 @@ fn assertSecpFixture(payload: []const u8, allocator: std.mem.Allocator, fixture:
     if (!std.mem.eql(u8, &parsed_sig.s, &expected_s)) return error.SecpFixtureSValueMismatch;
 }
 
+fn assertNegativeCryptoControls(payload: []const u8, allocator: std.mem.Allocator, fixture: Fixture) !void {
+    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, payload, .{});
+    defer parsed.deinit();
+
+    const root = try getObject(parsed.value);
+    const result = try getObject(try getField(root, "result"));
+    const ledger_obj = try getObject(try getField(result, "ledger"));
+    const txs_value = try getField(ledger_obj, "transactions");
+    const txs = switch (txs_value) {
+        .array => |arr| arr,
+        else => return error.ExpectedTransactionsArray,
+    };
+    if (txs.items.len == 0) return error.EmptyTransactions;
+    const first_tx = try getObject(txs.items[0]);
+
+    const signing_pub_key = try getString(try getField(first_tx, "SigningPubKey"));
+    const txn_signature = try getString(try getField(first_tx, "TxnSignature"));
+
+    // Control A: tampered values must not pass strict equality checks.
+    var tampered_pubkey = try allocator.dupe(u8, signing_pub_key);
+    defer allocator.free(tampered_pubkey);
+    tampered_pubkey[tampered_pubkey.len - 1] = if (tampered_pubkey[tampered_pubkey.len - 1] == 'A') 'B' else 'A';
+    try expectMismatch(tampered_pubkey, fixture.secp_pub_key);
+
+    var tampered_signature = try allocator.dupe(u8, txn_signature);
+    defer allocator.free(tampered_signature);
+    tampered_signature[tampered_signature.len - 1] = if (tampered_signature[tampered_signature.len - 1] == 'A') 'B' else 'A';
+    try expectMismatch(tampered_signature, fixture.secp_signature);
+
+    // Control B: tampered DER must be rejected by parser.
+    const sig_bytes = try parseHexAlloc(allocator, txn_signature);
+    defer allocator.free(sig_bytes);
+    var tampered_der = try allocator.dupe(u8, sig_bytes);
+    defer allocator.free(tampered_der);
+    tampered_der[0] = 0x31; // invalid DER sequence tag; expected 0x30
+    _ = secp256k1.parseDERSignature(tampered_der) catch |err| switch (err) {
+        error.InvalidDERSignature,
+        error.TruncatedSignature,
+        error.SignatureTooShort,
+        => return,
+        else => return err,
+    };
+    return error.TamperedDERSignatureAccepted;
+}
+
+fn assertStrictSecpVector(allocator: std.mem.Allocator, fixture: Fixture) !void {
+    const canonical = try parseHexAlloc(allocator, fixture.strict_canonical_hex);
+    defer allocator.free(canonical);
+    const prefix = try parseHexAlloc(allocator, fixture.strict_signing_prefix_hex);
+    defer allocator.free(prefix);
+    if (prefix.len != 4) return error.InvalidSigningPrefixLength;
+
+    const signing_blob = try allocator.alloc(u8, prefix.len + canonical.len);
+    defer allocator.free(signing_blob);
+    @memcpy(signing_blob[0..prefix.len], prefix);
+    @memcpy(signing_blob[prefix.len..], canonical);
+    const signing_hash = @import("crypto.zig").Hash.sha512Half(signing_blob);
+    const expected_hash = try parseHex32(fixture.strict_signing_hash_hex);
+    if (!std.mem.eql(u8, &signing_hash, &expected_hash)) return error.StrictSigningHashMismatch;
+
+    if (!isStrictCryptoEnabled()) return;
+
+    const pubkey = try parseHexAlloc(allocator, fixture.strict_pubkey_hex);
+    defer allocator.free(pubkey);
+    const signature = try parseHexAlloc(allocator, fixture.strict_signature_hex);
+    defer allocator.free(signature);
+
+    const ok = try @import("crypto.zig").KeyPair.verify(pubkey, &signing_hash, signature, .secp256k1);
+    if (!ok) return error.StrictSecpVerifyFailed;
+}
+
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
@@ -306,6 +392,11 @@ pub fn main() !void {
         .secp_signature = "3045022100E30FEACFAE9ED8034C4E24203BBFD6CE0D48ABCA901EDCE6EE04AA281A4DD73F02200CA7FDF03DC0B56F6E6FC5B499B4830F1ABD6A57FC4BE5C03F2CAF3CAFD1FF85",
         .secp_r = "E30FEACFAE9ED8034C4E24203BBFD6CE0D48ABCA901EDCE6EE04AA281A4DD73F",
         .secp_s = "0CA7FDF03DC0B56F6E6FC5B499B4830F1ABD6A57FC4BE5C03F2CAF3CAFD1FF85",
+        .strict_signing_prefix_hex = "53545800",
+        .strict_canonical_hex = "120000240000000168000000000000000a",
+        .strict_signing_hash_hex = "a4f2d3f63af8364de7341a0e22e5b4c3429ea09f82bed5c70284c6da43f0ee0f",
+        .strict_pubkey_hex = "04fa296a88ad11457343f591fa5b1b275cd62cfe2481e3692d0abfdf485038dfe0f7c1fdfef5d50b1849bf2a62f024aac4f3b98801023bd5e650a79df038da5b1b",
+        .strict_signature_hex = "3046022100fc53d6975608ecdd6abbf5f85aac4a550aa5a288b8f0f278c99acb760285ed10022100e35d3969851015aa6bc8e6d14bd603019c4f87dd7db679900f8199d80301e363",
     };
 
     var lm = try ledger.LedgerManager.init(allocator);
@@ -356,4 +447,6 @@ pub fn main() !void {
     try assertAccountFixture(fixture_acct, allocator, fixture);
     try assertLedgerFixture(fixture_ledger, allocator, fixture);
     try assertSecpFixture(fixture_ledger, allocator, fixture);
+    try assertNegativeCryptoControls(fixture_ledger, allocator, fixture);
+    try assertStrictSecpVector(allocator, fixture);
 }

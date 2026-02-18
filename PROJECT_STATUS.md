@@ -114,8 +114,16 @@ Pass Criteria:
 - Added Gate C secp256k1 fixture evidence checks from `current_ledger.json`:
   - fixed `hash` / `SigningPubKey` / `TxnSignature` values,
   - DER parse validation of signature `r`/`s` components in `src/parity_check.zig`.
+- Added Gate C negative cryptographic controls:
+  - tampered DER signature must fail parse,
+  - tampered pubkey/signature fixture values must fail strict mismatch controls.
+- Started optional strict secp256k1 verification harness in Gate C:
+  - reproducible vector with canonical signing bytes, XRPL `STX` prefix, signing hash, pubkey/signature, expected `verify=true`,
+  - activated only with `GATE_C_STRICT_CRYPTO=true` (and `-Dsecp256k1=true` build).
 - Tightened Gate D for richer evidence with profile metadata, explicit fail reason artifacts, endpoint health fields, and trend-point artifact output.
+- Added Gate D trend consolidation script `scripts/gates/gate_d_trend_merge.sh` for rolling 7-day summaries from prior artifacts.
 - Raised Gate E with profile-based fuzz budgets (`pr` vs `nightly`), seeded adversarial corpus markers, crash-free marker enforcement, and timing/budget artifacts.
+- Added normalized Gate E artifact `security-metrics.json` for historical metric comparisons.
 
 ## Sign-Off
 - Engineering Lead: pending

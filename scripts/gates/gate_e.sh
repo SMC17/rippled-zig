@@ -141,6 +141,32 @@ cat > "$artifact_dir/summary.json" <<JSON
 {"gate":"E","status":"pass","profile":"$fuzz_profile","panic_sites":$panic_count,"runtime_s":$elapsed_s,"fuzz_cases":$fuzz_cases,"corpus_seeds":$corpus_seeds,"crash_free":$crash_free}
 JSON
 
+cat > "$artifact_dir/security-metrics.json" <<JSON
+{
+  "gate": "E",
+  "status": "pass",
+  "profile": "$fuzz_profile",
+  "thresholds": {
+    "min_fuzz_cases": $min_fuzz_cases,
+    "max_runtime_s": $max_runtime_s
+  },
+  "observed": {
+    "fuzz_cases": $fuzz_cases,
+    "corpus_seeds": $corpus_seeds,
+    "crash_free": $crash_free,
+    "panic_sites": $panic_count,
+    "runtime_s": $elapsed_s
+  },
+  "timings_s": {
+    "total": $elapsed_s,
+    "build_gate_e": $dur_build,
+    "runtime_safety_scan": $dur_runtime_safety,
+    "panic_scan": $dur_panic_scan,
+    "todo_scan": $dur_todo_scan
+  }
+}
+JSON
+
 cat > "$artifact_dir/timings.json" <<JSON
 {
   "gate": "E",
