@@ -32,6 +32,7 @@ pub const Node = struct {
     allocator: std.mem.Allocator,
     id: [32]u8,
     ledger_manager: ledger.LedgerManager,
+    account_state: ledger.AccountState,
     consensus_engine: consensus.ConsensusEngine,
     tx_processor: transaction.TransactionProcessor,
     rpc_server: rpc.RpcServer,
@@ -42,24 +43,24 @@ pub const Node = struct {
         var id: [32]u8 = undefined;
         std.crypto.random.bytes(&id);
 
-        var ledger_manager = try ledger.LedgerManager.init(allocator);
-        const node_storage = try storage.Storage.init(allocator, "data");
-
-        const consensus_engine = try consensus.ConsensusEngine.init(allocator, &ledger_manager);
-
-        return Node{
+        var node = Node{
             .allocator = allocator,
             .id = id,
-            .ledger_manager = ledger_manager,
-            .consensus_engine = consensus_engine,
+            .ledger_manager = try ledger.LedgerManager.init(allocator),
+            .account_state = ledger.AccountState.init(allocator),
+            .consensus_engine = undefined,
             .tx_processor = try transaction.TransactionProcessor.init(allocator),
-            .rpc_server = rpc.RpcServer.init(allocator, 5005, &ledger_manager),
-            .storage = node_storage,
+            .rpc_server = undefined,
+            .storage = try storage.Storage.init(allocator, "data"),
         };
+        node.consensus_engine = try consensus.ConsensusEngine.init(allocator, &node.ledger_manager);
+        node.rpc_server = rpc.RpcServer.init(allocator, 5005, &node.ledger_manager, &node.account_state, &node.tx_processor);
+        return node;
     }
 
     pub fn deinit(self: *Node) void {
         self.ledger_manager.deinit();
+        self.account_state.deinit();
         self.consensus_engine.deinit();
         self.tx_processor.deinit();
         self.rpc_server.deinit();

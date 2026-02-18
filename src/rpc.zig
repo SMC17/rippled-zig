@@ -1,21 +1,34 @@
 const std = @import("std");
-const types = @import("types.zig");
 const ledger = @import("ledger.zig");
+const transaction = @import("transaction.zig");
+const rpc_methods = @import("rpc_methods.zig");
 
 /// JSON-RPC and HTTP API server
 pub const RpcServer = struct {
     allocator: std.mem.Allocator,
     port: u16,
     ledger_manager: *ledger.LedgerManager,
+    account_state: *ledger.AccountState,
+    tx_processor: *transaction.TransactionProcessor,
+    methods: rpc_methods.RpcMethods,
     server: ?std.net.Server,
     running: std.atomic.Value(bool),
     start_time: i64,
 
-    pub fn init(allocator: std.mem.Allocator, port: u16, ledger_manager: *ledger.LedgerManager) RpcServer {
+    pub fn init(
+        allocator: std.mem.Allocator,
+        port: u16,
+        ledger_manager: *ledger.LedgerManager,
+        account_state: *ledger.AccountState,
+        tx_processor: *transaction.TransactionProcessor,
+    ) RpcServer {
         return RpcServer{
             .allocator = allocator,
             .port = port,
             .ledger_manager = ledger_manager,
+            .account_state = account_state,
+            .tx_processor = tx_processor,
+            .methods = rpc_methods.RpcMethods.init(allocator, ledger_manager, account_state, tx_processor),
             .server = null,
             .running = std.atomic.Value(bool).init(false),
             .start_time = std.time.timestamp(),
@@ -187,16 +200,117 @@ pub const RpcServer = struct {
         );
     }
 
+    fn wrapJsonHttpResponse(self: *RpcServer, json_body: []const u8) ![]u8 {
+        return try std.fmt.allocPrint(self.allocator,
+            \\HTTP/1.1 200 OK
+            \\Content-Type: application/json
+            \\Connection: close
+            \\
+            \\{s}
+        , .{json_body});
+    }
+
+    fn buildRpcErrorResponse(self: *RpcServer, message: []const u8) ![]u8 {
+        return try std.fmt.allocPrint(self.allocator,
+            \\HTTP/1.1 400 Bad Request
+            \\Content-Type: application/json
+            \\Connection: close
+            \\
+            \\{{"error": "{s}"}}
+        , .{message});
+    }
+
+    fn parseJsonRpcMethod(body: []const u8, allocator: std.mem.Allocator) ![]const u8 {
+        var parsed = try std.json.parseFromSlice(std.json.Value, allocator, body, .{});
+        defer parsed.deinit();
+        const root = switch (parsed.value) {
+            .object => |obj| obj,
+            else => return error.InvalidRequest,
+        };
+        const method_value = root.get("method") orelse return error.InvalidRequest;
+        return switch (method_value) {
+            .string => |s| try allocator.dupe(u8, s),
+            else => error.InvalidRequest,
+        };
+    }
+
+    fn parseAgentConfigSetParams(body: []const u8, allocator: std.mem.Allocator) !struct { key: []u8, value: []u8 } {
+        var parsed = try std.json.parseFromSlice(std.json.Value, allocator, body, .{});
+        defer parsed.deinit();
+        const root = switch (parsed.value) {
+            .object => |obj| obj,
+            else => return error.InvalidRequest,
+        };
+        const params_value = root.get("params") orelse return error.InvalidRequest;
+        const params = switch (params_value) {
+            .array => |arr| arr,
+            else => return error.InvalidRequest,
+        };
+        if (params.items.len == 0) return error.InvalidRequest;
+        const first = switch (params.items[0]) {
+            .object => |obj| obj,
+            else => return error.InvalidRequest,
+        };
+        const key = switch (first.get("key") orelse return error.InvalidRequest) {
+            .string => |s| try allocator.dupe(u8, s),
+            else => return error.InvalidRequest,
+        };
+        errdefer allocator.free(key);
+        const value = switch (first.get("value") orelse return error.InvalidRequest) {
+            .string => |s| try allocator.dupe(u8, s),
+            else => return error.InvalidRequest,
+        };
+        return .{ .key = key, .value = value };
+    }
+
     /// Handle JSON-RPC request
     fn handleJsonRpc(self: *RpcServer, body: []const u8) ![]u8 {
-        // Parse JSON (simplified - just detect method)
-        if (std.mem.indexOf(u8, body, "\"server_info\"")) |_| {
-            return self.handleServerInfo();
-        } else if (std.mem.indexOf(u8, body, "\"ledger\"")) |_| {
-            return self.handleLedgerInfo();
+        const uptime_i64 = std.time.timestamp() - self.start_time;
+        const uptime = if (uptime_i64 < 0) @as(u64, 0) else @as(u64, @intCast(uptime_i64));
+
+        const method = parseJsonRpcMethod(body, self.allocator) catch return self.buildRpcErrorResponse("Invalid JSON-RPC request");
+        defer self.allocator.free(method);
+
+        if (std.mem.eql(u8, method, "server_info")) {
+            const payload = try self.methods.serverInfo(uptime);
+            defer self.allocator.free(payload);
+            return self.wrapJsonHttpResponse(payload);
+        }
+        if (std.mem.eql(u8, method, "ledger")) {
+            const payload = try self.methods.ledgerInfo(null);
+            defer self.allocator.free(payload);
+            return self.wrapJsonHttpResponse(payload);
+        }
+        if (std.mem.eql(u8, method, "fee")) {
+            const payload = try self.methods.fee();
+            defer self.allocator.free(payload);
+            return self.wrapJsonHttpResponse(payload);
+        }
+        if (std.mem.eql(u8, method, "agent_status")) {
+            const payload = try self.methods.agentStatus(uptime);
+            defer self.allocator.free(payload);
+            return self.wrapJsonHttpResponse(payload);
+        }
+        if (std.mem.eql(u8, method, "agent_config_get")) {
+            const payload = try self.methods.agentConfigGet();
+            defer self.allocator.free(payload);
+            return self.wrapJsonHttpResponse(payload);
+        }
+        if (std.mem.eql(u8, method, "agent_config_set")) {
+            const params = parseAgentConfigSetParams(body, self.allocator) catch return self.buildRpcErrorResponse("Invalid agent_config_set params");
+            defer self.allocator.free(params.key);
+            defer self.allocator.free(params.value);
+            const payload = self.methods.agentConfigSet(params.key, params.value) catch |err| switch (err) {
+                error.UnsupportedConfigKey => return self.buildRpcErrorResponse("Unsupported config key"),
+                error.InvalidConfigValue => return self.buildRpcErrorResponse("Invalid config value"),
+                error.ConfigValueOutOfRange => return self.buildRpcErrorResponse("Config value out of range"),
+                else => return err,
+            };
+            defer self.allocator.free(payload);
+            return self.wrapJsonHttpResponse(payload);
         }
 
-        return self.sendErrorResponse(null, 400, "Unknown method");
+        return self.buildRpcErrorResponse("Unknown method");
     }
 
     /// Send 404 response
@@ -281,8 +395,12 @@ test "rpc server initialization" {
     const allocator = std.testing.allocator;
     var lm = try ledger.LedgerManager.init(allocator);
     defer lm.deinit();
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
 
-    var server = RpcServer.init(allocator, 5005, &lm);
+    var server = RpcServer.init(allocator, 5005, &lm, &state, &processor);
     defer server.deinit();
 
     try std.testing.expectEqual(@as(u16, 5005), server.port);
@@ -294,4 +412,29 @@ test "rpc method from string" {
     try std.testing.expectEqual(RpcMethod.ledger, RpcMethod.fromString("ledger").?);
     try std.testing.expectEqual(RpcMethod.agent_status, RpcMethod.fromString("agent_status").?);
     try std.testing.expectEqual(@as(?RpcMethod, null), RpcMethod.fromString("invalid"));
+}
+
+test "json-rpc agent methods are wired" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    var server = RpcServer.init(allocator, 5005, &lm, &state, &processor);
+    defer server.deinit();
+
+    const status_response = try server.handleJsonRpc("{\"method\":\"agent_status\"}");
+    defer allocator.free(status_response);
+    try std.testing.expect(std.mem.indexOf(u8, status_response, "\"agent_control\"") != null);
+
+    const set_response = try server.handleJsonRpc("{\"method\":\"agent_config_set\",\"params\":[{\"key\":\"max_peers\",\"value\":\"31\"}]}");
+    defer allocator.free(set_response);
+    try std.testing.expect(std.mem.indexOf(u8, set_response, "\"status\": \"success\"") != null);
+
+    const get_response = try server.handleJsonRpc("{\"method\":\"agent_config_get\"}");
+    defer allocator.free(get_response);
+    try std.testing.expect(std.mem.indexOf(u8, get_response, "\"max_peers\": 31") != null);
 }

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "rpc_method": "agent_status",
+  "required_fields": {
+    "result": ["status", "agent_control", "node_state"],
+    "agent_control": ["api_version", "mode", "strict_crypto_required"],
+    "node_state": ["uptime", "validated_ledger_seq", "pending_transactions", "max_peers", "allow_unl_updates"]
+  },
+  "expected_values": {
+    "status": "success",
+    "api_version": 1,
+    "mode": "research",
+    "strict_crypto_required": true,
+    "max_peers": 21,
+    "allow_unl_updates": false
+  }
+}

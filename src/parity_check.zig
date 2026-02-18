@@ -90,6 +90,69 @@ fn getBool(value: std.json.Value) !bool {
     };
 }
 
+fn ensureRequiredFields(obj: std.json.ObjectMap, fields: []const std.json.Value) !void {
+    for (fields) |field_value| {
+        const field = try getString(field_value);
+        if (obj.get(field) == null) return error.MissingExpectedField;
+    }
+}
+
+fn assertAgentStatusSchema(status_payload: []const u8, schema_payload: []const u8, allocator: std.mem.Allocator) !void {
+    var status_parsed = try std.json.parseFromSlice(std.json.Value, allocator, status_payload, .{});
+    defer status_parsed.deinit();
+    var schema_parsed = try std.json.parseFromSlice(std.json.Value, allocator, schema_payload, .{});
+    defer schema_parsed.deinit();
+
+    const status_root = try getObject(status_parsed.value);
+    const status_result = try getObject(try getField(status_root, "result"));
+    const status_agent = try getObject(try getField(status_result, "agent_control"));
+    const status_node = try getObject(try getField(status_result, "node_state"));
+
+    const schema_root = try getObject(schema_parsed.value);
+    const required_fields = try getObject(try getField(schema_root, "required_fields"));
+    const expected_values = try getObject(try getField(schema_root, "expected_values"));
+
+    const req_result = switch (try getField(required_fields, "result")) {
+        .array => |arr| arr.items,
+        else => return error.ExpectedArray,
+    };
+    const req_agent = switch (try getField(required_fields, "agent_control")) {
+        .array => |arr| arr.items,
+        else => return error.ExpectedArray,
+    };
+    const req_node = switch (try getField(required_fields, "node_state")) {
+        .array => |arr| arr.items,
+        else => return error.ExpectedArray,
+    };
+    try ensureRequiredFields(status_result, req_result);
+    try ensureRequiredFields(status_agent, req_agent);
+    try ensureRequiredFields(status_node, req_node);
+
+    const expected_status = try getString(try getField(expected_values, "status"));
+    const actual_status = try getString(try getField(status_result, "status"));
+    if (!std.mem.eql(u8, actual_status, expected_status)) return error.AgentStatusMismatch;
+
+    const expected_api_version = try getInteger(try getField(expected_values, "api_version"));
+    const actual_api_version = try getInteger(try getField(status_agent, "api_version"));
+    if (actual_api_version != expected_api_version) return error.AgentStatusMismatch;
+
+    const expected_mode = try getString(try getField(expected_values, "mode"));
+    const actual_mode = try getString(try getField(status_agent, "mode"));
+    if (!std.mem.eql(u8, actual_mode, expected_mode)) return error.AgentStatusMismatch;
+
+    const expected_strict_crypto = try getBool(try getField(expected_values, "strict_crypto_required"));
+    const actual_strict_crypto = try getBool(try getField(status_agent, "strict_crypto_required"));
+    if (actual_strict_crypto != expected_strict_crypto) return error.AgentStatusMismatch;
+
+    const expected_max_peers = try getInteger(try getField(expected_values, "max_peers"));
+    const actual_max_peers = try getInteger(try getField(status_node, "max_peers"));
+    if (actual_max_peers != expected_max_peers) return error.AgentStatusMismatch;
+
+    const expected_allow_unl = try getBool(try getField(expected_values, "allow_unl_updates"));
+    const actual_allow_unl = try getBool(try getField(status_node, "allow_unl_updates"));
+    if (actual_allow_unl != expected_allow_unl) return error.AgentStatusMismatch;
+}
+
 fn parseHex32(hex: []const u8) ![32]u8 {
     if (hex.len != 64) return error.InvalidHexLength;
     var out: [32]u8 = undefined;
@@ -594,6 +657,8 @@ pub fn main() !void {
     const fee = try rpc.fee();
     defer allocator.free(fee);
     try assertFeeLocal(fee, allocator);
+    const agent_status = try rpc.agentStatus(1000);
+    defer allocator.free(agent_status);
 
     const fixture_server = try std.fs.cwd().readFileAlloc(allocator, "test_data/server_info.json", 512 * 1024);
     defer allocator.free(fixture_server);
@@ -603,6 +668,8 @@ pub fn main() !void {
     defer allocator.free(fixture_acct);
     const fixture_ledger = try std.fs.cwd().readFileAlloc(allocator, "test_data/current_ledger.json", 2 * 1024 * 1024);
     defer allocator.free(fixture_ledger);
+    const fixture_agent_schema = try std.fs.cwd().readFileAlloc(allocator, "test_data/agent_status_schema.json", 256 * 1024);
+    defer allocator.free(fixture_agent_schema);
 
     try assertServerFixture(fixture_server, allocator, fixture);
     try assertFeeFixture(fixture_fee, allocator, fixture);
@@ -611,4 +678,5 @@ pub fn main() !void {
     try assertSecpFixture(fixture_ledger, allocator, fixture);
     try assertNegativeCryptoControls(fixture_ledger, allocator, fixture);
     try assertStrictSecpVectors(allocator);
+    try assertAgentStatusSchema(agent_status, fixture_agent_schema, allocator);
 }

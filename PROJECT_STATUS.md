@@ -152,6 +152,14 @@ Pass Criteria:
 - Added tests for agent control RPC primitives in:
   - `src/rpc_methods.zig`,
   - `tests/rpc/methods_comprehensive.zig`.
+- Wired agent control methods through live JSON-RPC server handling in `src/rpc.zig`:
+  - `agent_status`, `agent_config_get`, and `agent_config_set` are now handled in POST JSON-RPC path.
+- Added deterministic offline Gate C schema stability contract for `agent_status`:
+  - fixture: `test_data/agent_status_schema.json`,
+  - enforcement in `scripts/gates/gate_c.sh` and `src/parity_check.zig`.
+- Added deterministic local multi-node simulation harness:
+  - script: `scripts/sim/run_local_cluster.sh`,
+  - artifacts: `simulation-config.json`, `round-events.ndjson`, `round-summary.ndjson`, `simulation-summary.json`, `simulation-report.md`.
 
 ## Sign-Off
 - Engineering Lead: pending

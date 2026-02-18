@@ -134,6 +134,19 @@ jq -e '.result.ledger.transactions[0].hash == "09D0D3C0AB0E6D8EBB3117C2FF1DD72F0
 jq -e '.result.ledger.transactions[0].SigningPubKey == "02D3FC6F04117E6420CAEA735C57CEEC934820BBCD109200933F6BBDD98F7BFBD9"' test_data/current_ledger.json > /dev/null
 jq -e '.result.ledger.transactions[0].TxnSignature == "3045022100E30FEACFAE9ED8034C4E24203BBFD6CE0D48ABCA901EDCE6EE04AA281A4DD73F02200CA7FDF03DC0B56F6E6FC5B499B4830F1ABD6A57FC4BE5C03F2CAF3CAFD1FF85"' test_data/current_ledger.json > /dev/null
 
+# Deterministic offline schema fixture check for agent_status contract.
+jq -e '.schema_version == 1' test_data/agent_status_schema.json > /dev/null
+jq -e '.rpc_method == "agent_status"' test_data/agent_status_schema.json > /dev/null
+jq -e '.required_fields.result == ["status","agent_control","node_state"]' test_data/agent_status_schema.json > /dev/null
+jq -e '.required_fields.agent_control == ["api_version","mode","strict_crypto_required"]' test_data/agent_status_schema.json > /dev/null
+jq -e '.required_fields.node_state == ["uptime","validated_ledger_seq","pending_transactions","max_peers","allow_unl_updates"]' test_data/agent_status_schema.json > /dev/null
+jq -e '.expected_values.status == "success"' test_data/agent_status_schema.json > /dev/null
+jq -e '.expected_values.api_version == 1' test_data/agent_status_schema.json > /dev/null
+jq -e '.expected_values.mode == "research"' test_data/agent_status_schema.json > /dev/null
+jq -e '.expected_values.strict_crypto_required == true' test_data/agent_status_schema.json > /dev/null
+jq -e '.expected_values.max_peers == 21' test_data/agent_status_schema.json > /dev/null
+jq -e '.expected_values.allow_unl_updates == false' test_data/agent_status_schema.json > /dev/null
+
 # Cross-fixture consistency assertions.
 server_seq="$(jq -r '.result.info.validated_ledger.seq' test_data/server_info.json)"
 server_hash="$(jq -r '.result.info.validated_ledger.hash' test_data/server_info.json)"
@@ -168,6 +181,7 @@ cat > "$artifact_dir/parity-report.json" <<JSON
     "secp-fixture-sha-pin",
     "snapshot-field-values",
     "snapshot-ledger-value-level-fields",
+    "agent-status-schema-stability",
     "snapshot-validated-ledger-seq-hash",
     "cross-fixture-consistency",
     "secp-fixture-signature-values",
