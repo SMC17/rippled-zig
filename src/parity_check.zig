@@ -335,6 +335,7 @@ fn assertRpcLiveNegativeContracts(server: *rpc.RpcServer, schema_payload: []cons
         "submit_missing_blob",
         "submit_empty_blob",
         "submit_non_hex_blob",
+        "submit_invalid_blob_structure",
     };
 
     for (research_cases) |case_name| {
@@ -368,6 +369,22 @@ fn assertRpcLiveNegativeContracts(server: *rpc.RpcServer, schema_payload: []cons
     const blocked_snippet = try std.fmt.allocPrint(allocator, "\"error\": \"{s}\"", .{blocked_expected});
     defer allocator.free(blocked_snippet);
     if (std.mem.indexOf(u8, blocked_response, blocked_snippet) == null) return error.RpcContractMismatch;
+}
+
+fn makeMinimalSubmitBlob(
+    allocator: std.mem.Allocator,
+    tx_type: types.TransactionType,
+    account: types.AccountID,
+    fee: types.Drops,
+    sequence: u32,
+) ![]u8 {
+    var raw: [34]u8 = undefined;
+    std.mem.writeInt(u16, raw[0..2], @intFromEnum(tx_type), .big);
+    @memcpy(raw[2..22], &account);
+    std.mem.writeInt(u64, raw[22..30], fee, .big);
+    std.mem.writeInt(u32, raw[30..34], sequence, .big);
+    const encoded = std.fmt.bytesToHex(raw, .upper);
+    return try allocator.dupe(u8, &encoded);
 }
 
 fn parseHex32(hex: []const u8) ![32]u8 {
@@ -904,7 +921,9 @@ pub fn main() !void {
     defer allocator.free(agent_status);
     const agent_config_get = try methods.agentConfigGet();
     defer allocator.free(agent_config_get);
-    const submit = try methods.submit("DEADBEEF");
+    const submit_blob = try makeMinimalSubmitBlob(allocator, .payment, account, types.MIN_TX_FEE, 7);
+    defer allocator.free(submit_blob);
+    const submit = try methods.submit(submit_blob);
     defer allocator.free(submit);
     const ping = try methods.ping();
     defer allocator.free(ping);

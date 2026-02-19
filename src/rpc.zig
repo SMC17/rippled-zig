@@ -443,7 +443,12 @@ pub const RpcServer = struct {
         if (std.mem.eql(u8, method, "submit")) {
             const tx_blob = parseSubmitParams(body, self.allocator) catch return self.buildRpcErrorResponse("Invalid submit params");
             defer self.allocator.free(tx_blob);
-            const payload = try self.methods.submit(tx_blob);
+            const payload = self.methods.submit(tx_blob) catch |err| switch (err) {
+                error.InvalidTxBlob => return self.buildRpcErrorResponse("Invalid submit tx_blob"),
+                error.UnsupportedTransactionType => return self.buildRpcErrorResponse("Unsupported submit transaction type"),
+                error.AccountNotFound => return self.buildRpcErrorResponse("Submit account not found"),
+                else => return err,
+            };
             defer self.allocator.free(payload);
             return self.wrapJsonHttpResponse(payload);
         }
@@ -714,7 +719,20 @@ test "json-rpc live method coverage for account_info submit ping ledger_current"
     try std.testing.expect(std.mem.indexOf(u8, account_resp, "\"status\": \"success\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, account_resp, "\"account_data\"") != null);
 
-    const submit_resp = try server.handleJsonRpc("{\"method\":\"submit\",\"params\":{\"tx_blob\":\"DEADBEEF\"}}");
+    // Minimal tx blob format:
+    // tx_type=payment(0), account=0x01*20, fee=10, sequence=1
+    const tx_blob =
+        "0000" ++
+        "0101010101010101010101010101010101010101" ++
+        "000000000000000a" ++
+        "00000001";
+    const submit_req = try std.fmt.allocPrint(
+        allocator,
+        "{{\"method\":\"submit\",\"params\":{{\"tx_blob\":\"{s}\"}}}}",
+        .{tx_blob},
+    );
+    defer allocator.free(submit_req);
+    const submit_resp = try server.handleJsonRpc(submit_req);
     defer allocator.free(submit_resp);
     try std.testing.expect(std.mem.indexOf(u8, submit_resp, "\"engine_result\": \"tesSUCCESS\"") != null);
 
@@ -813,4 +831,21 @@ test "submit rejects non-hex tx_blob" {
     const resp = try server.handleJsonRpc("{\"method\":\"submit\",\"params\":{\"tx_blob\":\"DEADZEEF\"}}");
     defer allocator.free(resp);
     try std.testing.expect(std.mem.indexOf(u8, resp, "Invalid submit params") != null);
+}
+
+test "submit rejects malformed tx_blob structure" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    var server = RpcServer.init(allocator, 5005, &lm, &state, &processor);
+    defer server.deinit();
+
+    const resp = try server.handleJsonRpc("{\"method\":\"submit\",\"params\":{\"tx_blob\":\"DEADBEEF\"}}");
+    defer allocator.free(resp);
+    try std.testing.expect(std.mem.indexOf(u8, resp, "Invalid submit tx_blob") != null);
 }

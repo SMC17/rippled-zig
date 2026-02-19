@@ -279,8 +279,39 @@ pub const RpcMethods = struct {
 
     /// submit - Submit a signed transaction
     pub fn submit(self: *RpcMethods, tx_blob: []const u8) ![]u8 {
-        _ = tx_blob;
-        // TODO: Deserialize and validate transaction
+        const tx = try parseMinimalSubmitTxBlob(tx_blob);
+        const validation = try self.tx_processor.validateTransaction(&tx, self.account_state);
+
+        if (validation != .tes_success) {
+            const engine = switch (validation) {
+                .tel_local_error => "telLOCAL_ERROR",
+                .tem_malformed => "temMALFORMED",
+                .ter_retry => "terRETRY",
+                .tec_claim => "tecCLAIM",
+                .tef_failure => "tefFAILURE",
+                .tes_success, .success => "tesSUCCESS",
+            };
+
+            return try std.fmt.allocPrint(self.allocator,
+                \\{{
+                \\  "result": {{
+                \\    "engine_result": "{s}",
+                \\    "engine_result_code": -1,
+                \\    "engine_result_message": "Transaction failed validation.",
+                \\    "status": "error",
+                \\    "validated": false
+                \\  }}
+                \\}}
+            , .{engine});
+        }
+
+        // Minimal local apply path: update sender account sequence and deduct fee.
+        var account = self.account_state.getAccount(tx.account) orelse return error.AccountNotFound;
+        account.sequence += 1;
+        account.balance -= tx.fee;
+        try self.account_state.putAccount(account);
+
+        try self.tx_processor.submitTransaction(tx);
         const pending_count = self.tx_processor.getPendingTransactions().len;
 
         return try std.fmt.allocPrint(self.allocator,
@@ -291,14 +322,48 @@ pub const RpcMethods = struct {
             \\    "engine_result_message": "The transaction was applied.",
             \\    "status": "success",
             \\    "tx_json": {{
-            \\      "TransactionType": "Payment"
+            \\      "TransactionType": "{s}",
+            \\      "Fee": "{d}",
+            \\      "Sequence": {d}
             \\    }},
             \\    "validated": false,
             \\    "kept": true,
             \\    "queued": {d}
             \\  }}
             \\}}
-        , .{pending_count});
+        , .{ @tagName(tx.tx_type), tx.fee, tx.sequence, pending_count });
+    }
+
+    fn parseMinimalSubmitTxBlob(tx_blob_hex: []const u8) !types.Transaction {
+        // Minimal wire format:
+        // [0..2): u16 tx_type (BE)
+        // [2..22): account (20 bytes)
+        // [22..30): fee (u64 BE)
+        // [30..34): sequence (u32 BE)
+        if (tx_blob_hex.len == 0 or tx_blob_hex.len % 2 != 0) return error.InvalidTxBlob;
+
+        var raw: [34]u8 = undefined;
+        if (tx_blob_hex.len != raw.len * 2) return error.InvalidTxBlob;
+        _ = std.fmt.hexToBytes(&raw, tx_blob_hex) catch return error.InvalidTxBlob;
+
+        const tx_type_raw = std.mem.readInt(u16, raw[0..2], .big);
+        const tx_type = std.meta.intToEnum(types.TransactionType, tx_type_raw) catch return error.UnsupportedTransactionType;
+
+        var account: types.AccountID = undefined;
+        @memcpy(&account, raw[2..22]);
+
+        const tx_fee = std.mem.readInt(u64, raw[22..30], .big);
+        const sequence = std.mem.readInt(u32, raw[30..34], .big);
+
+        return types.Transaction{
+            .tx_type = tx_type,
+            .account = account,
+            .fee = tx_fee,
+            .sequence = sequence,
+            .signing_pub_key = null,
+            .txn_signature = null,
+            .signers = null,
+        };
     }
 
     /// ledger_current - Get current working ledger index
@@ -575,6 +640,91 @@ test "agent config set rejects unsupported key" {
     var methods = RpcMethods.init(allocator, &lm, &state, &processor);
 
     try std.testing.expectError(error.UnsupportedConfigKey, methods.agentConfigSet("evil_key", "1"));
+}
+
+fn makeMinimalSubmitBlob(
+    allocator: std.mem.Allocator,
+    tx_type: types.TransactionType,
+    account: types.AccountID,
+    fee: types.Drops,
+    sequence: u32,
+) ![]u8 {
+    var raw: [34]u8 = undefined;
+    std.mem.writeInt(u16, raw[0..2], @intFromEnum(tx_type), .big);
+    @memcpy(raw[2..22], &account);
+    std.mem.writeInt(u64, raw[22..30], fee, .big);
+    std.mem.writeInt(u32, raw[30..34], sequence, .big);
+    const encoded = std.fmt.bytesToHex(raw, .upper);
+    return try allocator.dupe(u8, &encoded);
+}
+
+test "submit minimal path validates applies and queues transaction" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    const account = [_]u8{1} ** 20;
+    try state.putAccount(.{
+        .account = account,
+        .balance = 1000 * types.XRP,
+        .flags = .{},
+        .owner_count = 0,
+        .previous_txn_id = [_]u8{0} ** 32,
+        .previous_txn_lgr_seq = 1,
+        .sequence = 7,
+    });
+
+    var methods = RpcMethods.init(allocator, &lm, &state, &processor);
+    const blob = try makeMinimalSubmitBlob(allocator, .payment, account, types.MIN_TX_FEE, 7);
+    defer allocator.free(blob);
+
+    const res = try methods.submit(blob);
+    defer allocator.free(res);
+    try std.testing.expect(std.mem.indexOf(u8, res, "\"status\": \"success\"") != null);
+    try std.testing.expectEqual(@as(usize, 1), processor.getPendingTransactions().len);
+
+    const updated = state.getAccount(account).?;
+    try std.testing.expectEqual(@as(u32, 8), updated.sequence);
+    try std.testing.expectEqual(@as(types.Drops, 1000 * types.XRP - types.MIN_TX_FEE), updated.balance);
+}
+
+test "submit minimal path returns validation error on bad sequence" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    const account = [_]u8{2} ** 20;
+    try state.putAccount(.{
+        .account = account,
+        .balance = 1000 * types.XRP,
+        .flags = .{},
+        .owner_count = 0,
+        .previous_txn_id = [_]u8{0} ** 32,
+        .previous_txn_lgr_seq = 1,
+        .sequence = 10,
+    });
+
+    var methods = RpcMethods.init(allocator, &lm, &state, &processor);
+    const blob = try makeMinimalSubmitBlob(allocator, .payment, account, types.MIN_TX_FEE, 9);
+    defer allocator.free(blob);
+
+    const res = try methods.submit(blob);
+    defer allocator.free(res);
+    try std.testing.expect(std.mem.indexOf(u8, res, "\"status\": \"error\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, res, "\"engine_result\": \"terRETRY\"") != null);
+    try std.testing.expectEqual(@as(usize, 0), processor.getPendingTransactions().len);
 }
 
 test "agent control profile production policy is enforced" {
