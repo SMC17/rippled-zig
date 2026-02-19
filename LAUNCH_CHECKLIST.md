@@ -1,5 +1,8 @@
 # Launch Checklist: Week 7
 
+> Status: Archived checklist draft.
+> Current quality gate and release criteria live in `PROJECT_STATUS.md`.
+
 **Final verification before public launch**
 
 ---
@@ -238,4 +241,3 @@ Happy to answer questions about implementation, Zig, or XRPL protocol!
 ---
 
 **This checklist ensures professional, complete launch with 100% verified parity.**
-

@@ -1,5 +1,9 @@
 # Honest Parity Assessment: What We Actually Know
 
+> Status: Archived reference.
+> Canonical operational status is in `PROJECT_STATUS.md`.
+> Canonical architecture/backlog are in `docs/status/ARCHITECTURE_SOT.md` and `docs/status/AGENT_NATIVE_BACKLOG.md`.
+
 **Critical Reality Check**: We've implemented features, but haven't proven they match rippled
 
 ---
@@ -277,4 +281,3 @@
 **Build trust through honesty and systematic validation.**
 
 **Launch as educational/research implementation, work toward production over time.**
-

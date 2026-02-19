@@ -1,5 +1,7 @@
 # rippled-zig Architecture
 
+> Note: For current module maturity, ownership, and risk, see `docs/status/ARCHITECTURE_SOT.md`.
+
 **Purpose**: Technical architecture overview for contributors
 
 ---

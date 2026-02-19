@@ -1,5 +1,9 @@
 # rippled-zig Full Parity Progress Tracker
 
+> Status: Archived reference.
+> Canonical operational status is in `PROJECT_STATUS.md`.
+> Canonical architecture/backlog are in `docs/status/ARCHITECTURE_SOT.md` and `docs/status/AGENT_NATIVE_BACKLOG.md`.
+
 **Goal**: 100% feature parity with rippled (https://github.com/XRPLF/rippled)  
 **Current Status**: 95% feature parity, 5% integration remaining  
 **Timeline**: 6-7 weeks to verified 100% parity
@@ -203,4 +207,3 @@ Before declaring 100% parity:
 
 **Last Updated**: Today  
 **Next Review**: After libsecp256k1 installation and testing
-

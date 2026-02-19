@@ -1,222 +1,86 @@
-# Roadmap to rippled Parity
+# Roadmap To Parity
 
-**Goal**: Achieve 100% feature parity with rippled while maintaining superior code quality
+Status: Active parity program plan as of February 19, 2026.
 
-**Current Progress**: ~75% complete  
-**Timeline**: 3-6 months with active contributions  
+This document defines how parity claims can be earned. It replaces percentage-based claims with evidence-backed gates.
 
----
+## Parity Definition
+Parity means reproducible behavioral alignment for declared scope, not feature-count similarity.
 
-## Phase 1: Core Completion (Months 1-2)
+Declared scope today:
+- Live JSON-RPC subset and contracts
+- Deterministic serialization/hash vectors
+- Negative-case error contract stability
+- Testnet conformance checks for selected endpoints
 
-### Transaction Types (7 remaining)
+## Parity Claim Levels
 
-**Status**: 18/25 implemented (72%)
+| Level | Description | Required Evidence |
+|---|---|---|
+| P0 | Local deterministic correctness | Gate A + Gate B pass |
+| P1 | Contract parity (offline) for live method subset | Gate C pass with schema fixtures |
+| P2 | Live conformance parity (testnet subset) | Gate D pass with real endpoint artifacts |
+| P3 | Sustained parity signal over time | rolling trend summaries for Gate C/D/E/sim |
+| P4 | Security-reviewed parity candidate | Gate E trend thresholds + security review artifacts |
 
-**Remaining**:
-- [ ] NFTokenCancelOffer
-- [ ] NFTokenAcceptOffer  
-- [ ] AccountDelete
-- [ ] SetRegularKey
-- [ ] DepositPreauth
-- [ ] Clawback
-- [ ] TicketCreate
+No claim above current evidence should appear in project docs.
 
-**Effort**: 2-3 weeks  
-**Priority**: HIGH  
+## Current State (Based On Repository Evidence)
+- P0: achieved for current branch workflow.
+- P1: achieved for current live method subset and negative contracts.
+- P2: operationally available; requires environment secrets and sustained runs.
+- P3/P4: not yet achieved.
 
-### RPC Methods (21 remaining)
+## Workstreams To Reach Decision-Grade Parity
 
-**Status**: 9/30 implemented (30%)
+### Workstream 1: RPC Contract Expansion
+- Expand strict schemas for each newly live method.
+- Add deterministic negative contracts before broadening method behavior.
+- Keep fixture manifest pinned and reviewed.
 
-**Remaining**:
-- [ ] account_currencies
-- [ ] account_lines
-- [ ] account_objects
-- [ ] account_tx
-- [ ] ledger_data
-- [ ] ledger_entry
-- [ ] tx
-- [ ] tx_history
-- [ ] sign/sign_for
-- [ ] submit_multisigned
-- [ ] book_offers
-- [ ] deposit_authorized
-- [ ] gateway_balances
-- [ ] noripple_check
-- [ ] path_find
-- [ ] ripple_path_find
-- [ ] channel_authorize
-- [ ] channel_verify
-- [ ] manifest
-- [ ] validator_list_sites
-- [ ] peer_reservations_*
+Exit evidence:
+- Updated `test_data/rpc_live_methods_schema.json` and `test_data/rpc_live_negative_schema.json`
+- Passing `scripts/gates/gate_c.sh`
 
-**Effort**: 4-6 weeks  
-**Priority**: HIGH  
+### Workstream 2: Submit Path Fidelity
+- Extend minimal submit decoding/validation/apply coverage by transaction shape.
+- Add exact deterministic error mapping for each fail class.
 
----
+Exit evidence:
+- unit tests in `src/rpc.zig` / `src/rpc_methods.zig`
+- Gate C fixture and schema checks for new cases
 
-## Phase 2: Network Integration (Months 2-3)
+### Workstream 3: Live Testnet Conformance
+- Keep Gate D strict on endpoint health, status/error contracts, and latency thresholds.
+- Add live checks for newly promoted methods.
 
-### Peer Protocol
+Exit evidence:
+- `scripts/gates/gate_d.sh` pass artifacts
+- `trend-summary-7d.json` within thresholds
 
-**Status**: Basic TCP implemented, full protocol needed
+### Workstream 4: Policy and Safety
+- Preserve hard boundary between research and production profiles.
+- Block unsafe profile transitions and runtime config drift in production.
 
-**Required**:
-- [ ] Complete handshake protocol
-- [ ] Peer discovery mechanism
-- [ ] Message routing
-- [ ] Ledger sync from peers
-- [ ] Transaction flooding
-- [ ] Peer scoring
+Exit evidence:
+- policy tests in `src/rpc.zig` and `src/rpc_methods.zig`
+- deterministic policy contract checks in Gate C
 
-**Effort**: 3-4 weeks  
-**Priority**: CRITICAL for network operation  
+### Workstream 5: Security and Supply Chain
+- Maintain Gate E checks and trend thresholds.
+- Require signed/reviewed release chain for production-oriented claims.
 
-### secp256k1 Support
+Exit evidence:
+- `scripts/gates/gate_e.sh` pass artifacts
+- policy and provenance documentation
 
-**Status**: Partial (DER parsing only)
+## Parity Claim Governance
+1. Every parity statement must reference a specific gate artifact path.
+2. `PROJECT_STATUS.md` is authoritative when documents conflict.
+3. Historical launch or parity docs are non-authoritative without current evidence.
 
-**Required**:
-- [ ] Full ECDSA signature verification
-- [ ] Public key operations
-- [ ] Choose: C binding OR pure Zig
-
-**Effort**: 1-2 weeks  
-**Priority**: CRITICAL for compatibility  
-
----
-
-## Phase 3: Validation & Compatibility (Month 4)
-
-### Real Network Testing
-
-- [ ] Testnet sync successful
-- [ ] Can process real ledgers
-- [ ] Transaction hashing verified
-- [ ] State hashing matches network
-- [ ] All signatures verify correctly
-
-**Effort**: 2-3 weeks  
-**Priority**: CRITICAL  
-
-### Amendment System
-
-- [ ] Amendment voting
-- [ ] Feature enablement
-- [ ] Protocol upgrades
-- [ ] Compatibility tracking
-
-**Effort**: 2 weeks  
-**Priority**: HIGH  
-
----
-
-## Phase 4: Production Hardening (Months 5-6)
-
-### Performance
-
-- [ ] Benchmark against rippled
-- [ ] Optimize hot paths
-- [ ] SIMD cryptography
-- [ ] Concurrent processing
-- [ ] Memory optimization
-
-**Effort**: 3-4 weeks  
-**Priority**: MEDIUM  
-
-### Security
-
-- [ ] Professional security audit
-- [ ] Fuzzing all inputs
-- [ ] Attack resistance testing
-- [ ] Vulnerability remediation
-
-**Effort**: 2-3 weeks  
-**Priority**: HIGH  
-
----
-
-## Maintenance Strategy
-
-### Once Parity Achieved
-
-**Main Branch**:
-- Tracks rippled releases
-- Maintains compatibility
-- Security updates
-- Bug fixes
-
-**Develop Branch**:
-- New features
-- Performance improvements
-- Experimental work
-
-**Feature Branches**:
-- Specific enhancements
-- Research projects
-- Optimization attempts
-
----
-
-## Success Metrics
-
-### Phase 1: Core Complete
-- All 25 transaction types
-- All 30+ RPC methods
-- Feature parity: 100%
-
-### Phase 2: Network Ready
-- Testnet sync working
-- Peer protocol complete
-- secp256k1 functional
-
-### Phase 3: Validated
-- 95%+ compatibility tests passing
-- Real network validation
-- No critical bugs
-
-### Phase 4: Production Ready
-- Security audited
-- Performance competitive
-- Documentation complete
-- Community active
-
----
-
-## Timeline
-
-```
-Month 1-2: Complete remaining features
-Month 3-4: Network integration + validation
-Month 5-6: Production hardening
-Month 6+: Parity maintenance, experimental features
-```
-
-**Target**: Full parity by Month 6
-
----
-
-## Beyond Parity
-
-### Potential Spin-out Projects
-
-- XRPL client library (pure Zig)
-- High-performance RPC server
-- XRPL development tools
-- Testing and simulation frameworks
-- Cross-chain bridges
-- Custom XRPL networks
-
-### Innovation Areas
-
-- Advanced monitoring
-- Better developer tools
-- Performance optimizations
-- Novel features (research)
-- Educational materials
-
----
-
-This roadmap represents our path to becoming the definitive XRPL implementation in Zig and the go-to platform for XRPL development.
+## Next Milestones
+1. Expand live contract coverage for additional methods with fixture schemas.
+2. Add Gate D method coverage for each promoted method.
+3. Achieve sustained 7-day trend thresholds with no high-severity open risks.
+4. Produce review packet for security and release decision sign-off.

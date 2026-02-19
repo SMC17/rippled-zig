@@ -1,5 +1,8 @@
 # Ready for Launch: Final 3-Week Plan
 
+> Status: Archived planning draft.
+> Canonical release decision and gates are in `PROJECT_STATUS.md`.
+
 **Status**: Weeks 2-4 COMPLETE  
 **Achievement**: 95% parity with all critical features implemented  
 **Remaining**: 3 weeks of validation and hardening  
@@ -82,4 +85,3 @@ Final testing, documentation, public launch
 **Quality**: Elite  
 
 **Execute Weeks 5-7, then launch strong.**
-

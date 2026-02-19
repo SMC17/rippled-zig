@@ -2,8 +2,8 @@
 
 Canonical status for this repository. If any other file conflicts with this document, this document is authoritative.
 
-Last Updated: 2026-02-18
-Commit: a7ca70e (agent RPC live path + deterministic sim harness + Gate C agent_status schema checks)
+Last Updated: 2026-02-19
+Commit: 014cdf0 (submit payment negative contracts + Gate C enforcement)
 Status Owner: Engineering
 Scope: `main`
 
@@ -90,7 +90,6 @@ Pass Criteria:
 | Security scans | Wired via Gate E with strict negatives | `scripts/gates/gate_e.sh`, `src/security_check.zig` | NO |
 
 ## Known Limitations
-- Local toolchain remains 0.14.1 in this workspace; local parity with CI requires upgrading to Zig 0.15.1.
 - Several subsystems remain partial and require evidence-backed closure before parity claims.
 - Live testnet conformance is environment-dependent and must run in controlled CI with secrets.
 
@@ -102,6 +101,17 @@ Pass Criteria:
 | R-003 | Partial secp256k1 and sync paths | High | Crypto/Network | complete implementation + conformance tests | 2026-03-04 | Open |
 
 ## Changes Since Last Update
+- Completed tranche progression for live RPC/control-plane hardening:
+  - strict live handling for `account_info`, `submit`, `ping`, and `ledger_current`,
+  - production profile method-boundary enforcement,
+  - deterministic negative-case schema contracts for live methods.
+- Implemented minimal real `submit` deserialize/validate/apply path:
+  - minimal blob decode and validation flow,
+  - deterministic RPC errors for malformed/unsupported input classes.
+- Expanded `submit` payment shape handling:
+  - destination + amount decode in minimal blob form,
+  - deterministic negative contracts for missing destination account and insufficient payment balance,
+  - Gate C enforcement and parity-check coverage updates.
 - Locked baseline with explicit branch-protection required-check names in `.github/BRANCH_PROTECTION_BASELINE.md`.
 - Expanded Gate B deterministic vectors to cover:
   - VL length boundaries `192/193` and `12480/12481`,

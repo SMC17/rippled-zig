@@ -13,31 +13,31 @@ This guide will help you get started with the Zig-based XRP Ledger daemon implem
 ### 1. Clone or navigate to the project directory
 
 ```bash
-cd /Users/seancollins/rip-zig
+cd /Users/seancollins/rippled-zig
 ```
 
 ### 2. Build the project
 
 ```bash
-zig build
+./zig build
 ```
 
 ### 3. Run tests
 
 ```bash
-zig build test
+./zig build test
 ```
 
 ### 4. Run the daemon
 
 ```bash
-zig build run
+scripts/run.sh
 ```
 
 ## Project Structure Overview
 
 ```
-rip-zig/
+rippled-zig/
 ├── src/
 │   ├── main.zig          - Entry point and node coordination
 │   ├── types.zig         - Core XRP Ledger types (Account, Amount, Currency)
@@ -45,10 +45,12 @@ rip-zig/
 │   ├── ledger.zig        - Ledger management and state
 │   ├── consensus.zig     - XRP Ledger Consensus Protocol
 │   ├── transaction.zig   - Transaction processing and validation
-│   ├── network.zig       - P2P networking (skeleton)
-│   ├── rpc.zig          - JSON-RPC/WebSocket API (skeleton)
-│   └── storage.zig      - Ledger storage and caching
+│   ├── network.zig       - P2P networking (partial)
+│   ├── rpc.zig           - JSON-RPC server + live method dispatch
+│   └── storage.zig       - Ledger storage and caching
 ├── build.zig            - Build configuration
+├── scripts/run.sh       - Standard local run entrypoint
+├── scripts/gates/       - Quality/parity/conformance/security gates
 ├── README.md            - Main documentation
 └── LICENSE              - ISC License
 
@@ -101,13 +103,13 @@ Edit the source files in the `src/` directory.
 ### 2. Run Tests
 
 ```bash
-zig build test
+./zig build test
 ```
 
 ### 3. Build and Run
 
 ```bash
-zig build run
+scripts/run.sh
 ```
 
 ### 4. Check for Issues
@@ -122,12 +124,11 @@ zig version
 
 This is an early-stage implementation with the following limitations:
 
-- [ ] P2P networking is stubbed out (not fully implemented)
-- [ ] RPC server is skeleton only
-- [ ] No actual network connectivity
+- [ ] P2P/network sync paths are incomplete for full compatibility
+- [ ] `submit` supports a minimal blob path, not full XRPL serialization
 - [ ] Storage is simplified (no RocksDB/NuDB integration)
-- [ ] Consensus rounds are not fully implemented
-- [ ] No connection to mainnet or testnet
+- [ ] Consensus rounds are simplified vs production behavior
+- [ ] No mainnet-ready hardening or security audit evidence
 
 ## Next Steps for Development
 
@@ -162,6 +163,7 @@ Contributions are welcome! Please:
 ## Getting Help
 
 - Read the main README.md
+- Read `PROJECT_STATUS.md` for canonical maturity/gate status
 - Check the source code documentation
 - Review the original rippled documentation
 - Open an issue on GitHub
@@ -169,4 +171,3 @@ Contributions are welcome! Please:
 ## License
 
 ISC License - same as the original rippled project.
-

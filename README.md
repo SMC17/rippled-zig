@@ -25,17 +25,22 @@ All maturity/parity claims are considered untrusted unless backed by reproducibl
 
 ## What's Implemented
 
-Based on XRPL specification:
+Current `main` includes:
 
-- 25 transaction type structures (Payment, DEX, Escrow, Channels, Checks, NFTs, etc.)
-- 30 RPC method skeletons
-- Byzantine Fault Tolerant consensus logic
-- Cryptographic primitives (RIPEMD-160, Ed25519, SHA-512)
-- Serialization framework
-- Network protocol structures
-- Database and infrastructure
-
-**Total**: 14,988 lines of Zig code with 80+ tests
+- Core ledger/consensus/transaction modules with unit coverage
+- Live JSON-RPC handling for:
+  - `server_info`
+  - `ledger`
+  - `fee`
+  - `ledger_current`
+  - `account_info`
+  - `submit` (minimal deserialize/validate/apply path)
+  - `ping`
+  - `agent_status`
+  - `agent_config_get`
+  - `agent_config_set`
+- Control-plane profiles (`research` / `production`) with policy enforcement
+- Gate-backed parity and conformance checks (A-E + simulation)
 
 ## Current Limitations
 
@@ -46,10 +51,10 @@ Based on XRPL specification:
 - Production security requirements
 
 **Known Gaps**:
-- secp256k1 signature verification (partial)
-- Exact serialization format matching
-- Network protocol compatibility
-- Real-world edge cases
+- Full XRPL transaction and binary codec compatibility
+- Complete P2P wire compatibility and robust ledger sync
+- Exhaustive secp256k1 parity and production-grade crypto assurance
+- Long-horizon soak, chaos, and security audit evidence
 
 **Validation Status**: Unit tested, needs comprehensive real-network validation
 
@@ -60,8 +65,21 @@ Based on XRPL specification:
 ```bash
 git clone https://github.com/SMC17/rippled-zig.git
 cd rippled-zig
+./zig build
+./zig build test
+```
+
+If `./zig` is unavailable in your workspace:
+
+```bash
 zig build
 zig build test
+```
+
+Run node with cache env auto-wired:
+
+```bash
+scripts/run.sh
 ```
 
 ## Use Cases
@@ -117,6 +135,25 @@ Contributions welcome to help validate and improve!
 - Test coverage expansion
 
 See CONTRIBUTING.md
+
+## Quality Gates
+
+Primary verification flows:
+
+```bash
+scripts/gates/gate_a.sh artifacts/gate-a-local
+scripts/gates/gate_b.sh artifacts/gate-b-local
+scripts/gates/gate_c.sh artifacts/gate-c-local
+scripts/gates/gate_e.sh artifacts/gate-e-local
+```
+
+Live testnet conformance (Gate D):
+
+```bash
+export TESTNET_RPC_URL="https://s.altnet.rippletest.net:51234/"
+export TESTNET_WS_URL="wss://s.altnet.rippletest.net:51233/"
+scripts/gates/gate_d.sh artifacts/gate-d-live
+```
 
 ## Security Warning
 

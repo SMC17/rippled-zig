@@ -1,5 +1,8 @@
 # Launch Announcement: rippled-zig v1.0.0
 
+> Status: Archived draft content.
+> Not representative of current release posture. See `PROJECT_STATUS.md` for authoritative status.
+
 **Date**: October 30, 2025  
 **Repository**: https://github.com/SMC17/rippled-zig  
 
@@ -211,4 +214,3 @@ Contributions welcome! Looking for help with:
 **LAUNCH NOW. THE REPOSITORY IS READY.**
 
 **https://github.com/SMC17/rippled-zig**
-
