@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "methods": {
+    "account_info": {
+      "required_fields": ["result"],
+      "required_result_fields": ["account_data", "ledger_current_index", "status", "validated"],
+      "required_account_data_fields": ["Account", "Balance", "Flags", "OwnerCount", "Sequence"],
+      "expected_status": "success",
+      "expected_validated": true
+    },
+    "submit": {
+      "required_fields": ["result"],
+      "required_result_fields": ["engine_result", "engine_result_code", "status", "validated", "tx_json"],
+      "expected_status": "success",
+      "expected_engine_result": "tesSUCCESS"
+    },
+    "ping": {
+      "required_fields": ["result"]
+    },
+    "ledger_current": {
+      "required_fields": ["result"],
+      "required_result_fields": ["ledger_current_index"]
+    }
+  }
+}

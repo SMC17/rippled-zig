@@ -7,7 +7,13 @@ const rpc_format = @import("rpc_format.zig");
 
 /// Complete RPC method implementations
 pub const RpcMethods = struct {
+    pub const ControlProfile = enum {
+        research,
+        production,
+    };
+
     pub const AgentControlConfig = struct {
+        profile: ControlProfile = .research,
         max_peers: u32 = 21,
         fee_multiplier: u32 = 1,
         strict_crypto_required: bool = true,
@@ -32,6 +38,32 @@ pub const RpcMethods = struct {
             .account_state = account_state,
             .tx_processor = tx_processor,
             .agent_config = .{},
+        };
+    }
+
+    pub fn currentProfile(self: *const RpcMethods) ControlProfile {
+        return self.agent_config.profile;
+    }
+
+    pub fn isMethodAllowedForProfile(self: *const RpcMethods, method: []const u8) bool {
+        return switch (self.agent_config.profile) {
+            .research => true,
+            .production => blk: {
+                const allowed = [_][]const u8{
+                    "server_info",
+                    "ledger",
+                    "ledger_current",
+                    "fee",
+                    "ping",
+                    "agent_status",
+                    "agent_config_get",
+                    "account_info",
+                };
+                for (allowed) |name| {
+                    if (std.mem.eql(u8, method, name)) break :blk true;
+                }
+                break :blk false;
+            },
         };
     }
 
@@ -332,6 +364,10 @@ pub const RpcMethods = struct {
     pub fn agentStatus(self: *RpcMethods, uptime: u64) ![]u8 {
         const current_ledger = self.ledger_manager.getCurrentLedger();
         const pending_count = self.tx_processor.getPendingTransactions().len;
+        const mode = switch (self.agent_config.profile) {
+            .research => "research",
+            .production => "production",
+        };
 
         return try std.fmt.allocPrint(self.allocator,
             \\{{
@@ -339,7 +375,7 @@ pub const RpcMethods = struct {
             \\    "status": "success",
             \\    "agent_control": {{
             \\      "api_version": 1,
-            \\      "mode": "research",
+            \\      "mode": "{s}",
             \\      "strict_crypto_required": {s}
             \\    }},
             \\    "node_state": {{
@@ -352,6 +388,7 @@ pub const RpcMethods = struct {
             \\  }}
             \\}}
         , .{
+            mode,
             if (self.agent_config.strict_crypto_required) "true" else "false",
             uptime,
             current_ledger.sequence,
@@ -363,11 +400,17 @@ pub const RpcMethods = struct {
 
     /// agent_config_get - retrieve control-plane configuration
     pub fn agentConfigGet(self: *RpcMethods) ![]u8 {
+        const profile = switch (self.agent_config.profile) {
+            .research => "research",
+            .production => "production",
+        };
+
         return try std.fmt.allocPrint(self.allocator,
             \\{{
             \\  "result": {{
             \\    "status": "success",
             \\    "config": {{
+            \\      "profile": "{s}",
             \\      "max_peers": {d},
             \\      "fee_multiplier": {d},
             \\      "strict_crypto_required": {s},
@@ -376,6 +419,7 @@ pub const RpcMethods = struct {
             \\  }}
             \\}}
         , .{
+            profile,
             self.agent_config.max_peers,
             self.agent_config.fee_multiplier,
             if (self.agent_config.strict_crypto_required) "true" else "false",
@@ -389,23 +433,56 @@ pub const RpcMethods = struct {
         return error.InvalidBooleanValue;
     }
 
+    fn parseProfileLiteral(value: []const u8) !ControlProfile {
+        if (std.mem.eql(u8, value, "research")) return .research;
+        if (std.mem.eql(u8, value, "production")) return .production;
+        return error.InvalidProfileValue;
+    }
+
+    fn validateProductionInvariants(config: AgentControlConfig) !void {
+        if (!config.strict_crypto_required) return error.PolicyViolation;
+        if (config.allow_unl_updates) return error.PolicyViolation;
+        if (config.fee_multiplier > 5) return error.PolicyViolation;
+        if (config.max_peers > 100) return error.PolicyViolation;
+    }
+
     /// agent_config_set - allowlisted mutable knobs for autonomous control loops
     pub fn agentConfigSet(self: *RpcMethods, key: []const u8, value: []const u8) ![]u8 {
+        var next = self.agent_config;
+
         if (std.mem.eql(u8, key, "max_peers")) {
             const parsed = std.fmt.parseInt(u32, value, 10) catch return error.InvalidConfigValue;
             if (parsed < 5 or parsed > 200) return error.ConfigValueOutOfRange;
-            self.agent_config.max_peers = parsed;
+            next.max_peers = parsed;
         } else if (std.mem.eql(u8, key, "fee_multiplier")) {
             const parsed = std.fmt.parseInt(u32, value, 10) catch return error.InvalidConfigValue;
             if (parsed < 1 or parsed > 100) return error.ConfigValueOutOfRange;
-            self.agent_config.fee_multiplier = parsed;
+            next.fee_multiplier = parsed;
         } else if (std.mem.eql(u8, key, "strict_crypto_required")) {
-            self.agent_config.strict_crypto_required = parseBoolLiteral(value) catch return error.InvalidConfigValue;
+            next.strict_crypto_required = parseBoolLiteral(value) catch return error.InvalidConfigValue;
         } else if (std.mem.eql(u8, key, "allow_unl_updates")) {
-            self.agent_config.allow_unl_updates = parseBoolLiteral(value) catch return error.InvalidConfigValue;
+            next.allow_unl_updates = parseBoolLiteral(value) catch return error.InvalidConfigValue;
+        } else if (std.mem.eql(u8, key, "profile")) {
+            next.profile = parseProfileLiteral(value) catch return error.InvalidConfigValue;
         } else {
             return error.UnsupportedConfigKey;
         }
+
+        // Enforce policy constraints for production profile.
+        if (next.profile == .production) {
+            validateProductionInvariants(next) catch |err| switch (err) {
+                error.PolicyViolation => {
+                    // Distinguish entering production from violating an active production profile.
+                    if (self.agent_config.profile != .production and next.profile == .production) {
+                        return error.UnsafeProfileTransition;
+                    }
+                    return error.PolicyViolation;
+                },
+                else => return err,
+            };
+        }
+
+        self.agent_config = next;
 
         return try std.fmt.allocPrint(self.allocator,
             \\{{
@@ -475,6 +552,7 @@ test "agent control config set/get and status" {
 
     const get_res = try methods.agentConfigGet();
     defer allocator.free(get_res);
+    try std.testing.expect(std.mem.indexOf(u8, get_res, "\"profile\": \"research\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, get_res, "\"max_peers\": 33") != null);
 
     const status_res = try methods.agentStatus(42);
@@ -497,4 +575,35 @@ test "agent config set rejects unsupported key" {
     var methods = RpcMethods.init(allocator, &lm, &state, &processor);
 
     try std.testing.expectError(error.UnsupportedConfigKey, methods.agentConfigSet("evil_key", "1"));
+}
+
+test "agent control profile production policy is enforced" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    var methods = RpcMethods.init(allocator, &lm, &state, &processor);
+
+    // Unsafe transition: cannot enter production with strict crypto disabled.
+    const set_strict_false = try methods.agentConfigSet("strict_crypto_required", "false");
+    defer allocator.free(set_strict_false);
+    try std.testing.expectError(error.UnsafeProfileTransition, methods.agentConfigSet("profile", "production"));
+
+    // Restore safe state and enter production.
+    const set_strict_true = try methods.agentConfigSet("strict_crypto_required", "true");
+    defer allocator.free(set_strict_true);
+    const set_prod = try methods.agentConfigSet("profile", "production");
+    defer allocator.free(set_prod);
+    try std.testing.expect(std.mem.indexOf(u8, set_prod, "\"status\": \"success\"") != null);
+
+    // In production profile, unsafe mutations are blocked.
+    try std.testing.expectError(error.PolicyViolation, methods.agentConfigSet("allow_unl_updates", "true"));
+    try std.testing.expectError(error.PolicyViolation, methods.agentConfigSet("strict_crypto_required", "false"));
+    try std.testing.expectError(error.PolicyViolation, methods.agentConfigSet("fee_multiplier", "99"));
 }

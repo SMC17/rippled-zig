@@ -93,6 +93,8 @@ post_json() {
 
 post_json '{"method":"server_info"}' "$artifact_dir/server_info.json" "$artifact_dir/server_info.metrics"
 post_json '{"method":"fee"}' "$artifact_dir/fee.json" "$artifact_dir/fee.metrics"
+post_json '{"method":"account_info","params":[{"account":"invalid"}]}' "$artifact_dir/account_info_negative.json" "$artifact_dir/account_info_negative.metrics"
+post_json '{"method":"submit","params":[{}]}' "$artifact_dir/submit_negative.json" "$artifact_dir/submit_negative.metrics"
 
 validated_seq="$(jq -r '.result.info.validated_ledger.seq' "$artifact_dir/server_info.json")"
 validated_hash="$(jq -r '.result.info.validated_ledger.hash' "$artifact_dir/server_info.json")"
@@ -101,6 +103,10 @@ network_id="$(jq -r '.result.info.network_id' "$artifact_dir/server_info.json")"
 server_info_status="$(jq -r '.result.status' "$artifact_dir/server_info.json")"
 base_fee="$(jq -r '.result.drops.base_fee' "$artifact_dir/fee.json")"
 fee_status="$(jq -r '.result.status' "$artifact_dir/fee.json")"
+account_info_neg_status="$(jq -r '.result.status // .status // "unknown"' "$artifact_dir/account_info_negative.json")"
+account_info_neg_error="$(jq -r '.result.error // .error // empty' "$artifact_dir/account_info_negative.json")"
+submit_neg_status="$(jq -r '.result.status // .status // "unknown"' "$artifact_dir/submit_negative.json")"
+submit_neg_error="$(jq -r '.result.error // .error // empty' "$artifact_dir/submit_negative.json")"
 
 if [[ -z "$validated_seq" || "$validated_seq" == "null" ]]; then
   fail "Missing validated ledger sequence"
@@ -150,12 +156,26 @@ if (( base_fee < min_base_fee || base_fee > max_base_fee )); then
   fail "base_fee outside threshold: $base_fee (expected $min_base_fee..$max_base_fee)"
 fi
 
+if [[ "$account_info_neg_status" != "error" ]]; then
+  fail "account_info negative contract expected status=error, got: $account_info_neg_status"
+fi
+if [[ -z "$account_info_neg_error" || "$account_info_neg_error" == "null" ]]; then
+  fail "account_info negative contract missing error field"
+fi
+
+if [[ "$submit_neg_status" != "error" ]]; then
+  fail "submit negative contract expected status=error, got: $submit_neg_status"
+fi
+if [[ -z "$submit_neg_error" || "$submit_neg_error" == "null" ]]; then
+  fail "submit negative contract missing error field"
+fi
+
 ledger_payload="{\"method\":\"ledger\",\"params\":[{\"ledger_index\":$validated_seq,\"transactions\":false,\"expand\":false}] }"
 post_json "$ledger_payload" "$artifact_dir/ledger.json" "$artifact_dir/ledger.metrics"
 
 ledger_seq="$(jq -r '.result.ledger.ledger_index // .result.ledger_index' "$artifact_dir/ledger.json")"
 ledger_hash="$(jq -r '.result.ledger.ledger_hash // .result.ledger_hash' "$artifact_dir/ledger.json")"
-ledger_status="$(jq -r '.result.status // \"success\"' "$artifact_dir/ledger.json")"
+ledger_status="$(jq -r '.result.status // "success"' "$artifact_dir/ledger.json")"
 
 if ! [[ "$ledger_seq" =~ ^[0-9]+$ ]]; then
   fail "Non-numeric ledger sequence returned from ledger method: $ledger_seq"
@@ -180,6 +200,8 @@ fi
 server_latency="$(awk '{print $2}' "$artifact_dir/server_info.metrics")"
 fee_latency="$(awk '{print $2}' "$artifact_dir/fee.metrics")"
 ledger_latency="$(awk '{print $2}' "$artifact_dir/ledger.metrics")"
+account_info_negative_latency="$(awk '{print $2}' "$artifact_dir/account_info_negative.metrics")"
+submit_negative_latency="$(awk '{print $2}' "$artifact_dir/submit_negative.metrics")"
 
 cat > "$artifact_dir/testnet-conformance.json" <<JSON
 {
@@ -207,10 +229,18 @@ cat > "$artifact_dir/testnet-conformance.json" <<JSON
     "validated_ledger_seq": $validated_seq,
     "validated_ledger_hash": "$validated_hash",
     "base_fee": $base_fee,
+    "negative_contracts": {
+      "account_info_status": "$account_info_neg_status",
+      "account_info_error": "$account_info_neg_error",
+      "submit_status": "$submit_neg_status",
+      "submit_error": "$submit_neg_error"
+    },
     "latency_s": {
       "server_info": $server_latency,
       "fee": $fee_latency,
-      "ledger": $ledger_latency
+      "ledger": $ledger_latency,
+      "account_info_negative": $account_info_negative_latency,
+      "submit_negative": $submit_negative_latency
     }
   }
 }
@@ -226,7 +256,9 @@ cat > "$artifact_dir/trend-point.json" <<JSON
   "latency_s": {
     "server_info": $server_latency,
     "fee": $fee_latency,
-    "ledger": $ledger_latency
+    "ledger": $ledger_latency,
+    "account_info_negative": $account_info_negative_latency,
+    "submit_negative": $submit_negative_latency
   }
 }
 JSON

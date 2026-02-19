@@ -147,6 +147,38 @@ jq -e '.expected_values.strict_crypto_required == true' test_data/agent_status_s
 jq -e '.expected_values.max_peers == 21' test_data/agent_status_schema.json > /dev/null
 jq -e '.expected_values.allow_unl_updates == false' test_data/agent_status_schema.json > /dev/null
 
+# Deterministic offline schema fixture check for agent_config_get contract.
+jq -e '.schema_version == 1' test_data/agent_config_schema.json > /dev/null
+jq -e '.rpc_method == "agent_config_get"' test_data/agent_config_schema.json > /dev/null
+jq -e '.required_fields.result == ["status","config"]' test_data/agent_config_schema.json > /dev/null
+jq -e '.required_fields.config == ["profile","max_peers","fee_multiplier","strict_crypto_required","allow_unl_updates"]' test_data/agent_config_schema.json > /dev/null
+jq -e '.expected_values.status == "success"' test_data/agent_config_schema.json > /dev/null
+jq -e '.expected_values.profile == "research"' test_data/agent_config_schema.json > /dev/null
+jq -e '.expected_values.max_peers == 21' test_data/agent_config_schema.json > /dev/null
+jq -e '.expected_values.fee_multiplier == 1' test_data/agent_config_schema.json > /dev/null
+jq -e '.expected_values.strict_crypto_required == true' test_data/agent_config_schema.json > /dev/null
+jq -e '.expected_values.allow_unl_updates == false' test_data/agent_config_schema.json > /dev/null
+
+# Deterministic offline schema fixture checks for newly live JSON-RPC methods.
+jq -e '.schema_version == 1' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.account_info.required_result_fields == ["account_data","ledger_current_index","status","validated"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.account_info.required_account_data_fields == ["Account","Balance","Flags","OwnerCount","Sequence"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.account_info.expected_status == "success"' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.account_info.expected_validated == true' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.submit.required_result_fields == ["engine_result","engine_result_code","status","validated","tx_json"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.submit.expected_status == "success"' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.submit.expected_engine_result == "tesSUCCESS"' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.ping.required_fields == ["result"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.ledger_current.required_result_fields == ["ledger_current_index"]' test_data/rpc_live_methods_schema.json > /dev/null
+
+# Deterministic offline schema fixture checks for negative live JSON-RPC contracts.
+jq -e '.schema_version == 1' test_data/rpc_live_negative_schema.json > /dev/null
+jq -e '.cases.account_info_missing_param.expected_error == "Invalid account_info params"' test_data/rpc_live_negative_schema.json > /dev/null
+jq -e '.cases.account_info_invalid_account.expected_error == "Invalid account_info params"' test_data/rpc_live_negative_schema.json > /dev/null
+jq -e '.cases.submit_missing_blob.expected_error == "Invalid submit params"' test_data/rpc_live_negative_schema.json > /dev/null
+jq -e '.cases.submit_empty_blob.expected_error == "Invalid submit params"' test_data/rpc_live_negative_schema.json > /dev/null
+jq -e '.cases.submit_blocked_in_production.expected_error == "Method blocked by profile policy"' test_data/rpc_live_negative_schema.json > /dev/null
+
 # Cross-fixture consistency assertions.
 server_seq="$(jq -r '.result.info.validated_ledger.seq' test_data/server_info.json)"
 server_hash="$(jq -r '.result.info.validated_ledger.hash' test_data/server_info.json)"
@@ -182,6 +214,9 @@ cat > "$artifact_dir/parity-report.json" <<JSON
     "snapshot-field-values",
     "snapshot-ledger-value-level-fields",
     "agent-status-schema-stability",
+    "agent-config-schema-stability",
+    "rpc-live-method-schema-stability",
+    "rpc-live-negative-schema-stability",
     "snapshot-validated-ledger-seq-hash",
     "cross-fixture-consistency",
     "secp-fixture-signature-values",

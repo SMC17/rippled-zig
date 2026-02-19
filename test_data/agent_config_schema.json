@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "rpc_method": "agent_config_get",
+  "required_fields": {
+    "result": ["status", "config"],
+    "config": ["profile", "max_peers", "fee_multiplier", "strict_crypto_required", "allow_unl_updates"]
+  },
+  "expected_values": {
+    "status": "success",
+    "profile": "research",
+    "max_peers": 21,
+    "fee_multiplier": 1,
+    "strict_crypto_required": true,
+    "allow_unl_updates": false
+  }
+}

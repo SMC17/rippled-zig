@@ -189,6 +189,76 @@ pub const TrustSetTransaction = struct {
     }
 };
 
+fn amountIsPositive(amount: types.Amount) bool {
+    return switch (amount) {
+        .xrp => |drops| drops > 0,
+        .iou => |iou| iou.value > 0,
+    };
+}
+
+/// OfferCreate transaction - create a DEX offer.
+pub const OfferCreateTransaction = struct {
+    base: types.Transaction,
+    taker_gets: types.Amount,
+    taker_pays: types.Amount,
+    expiration: ?u32 = null,
+
+    pub fn create(
+        account: types.AccountID,
+        taker_gets: types.Amount,
+        taker_pays: types.Amount,
+        fee: types.Drops,
+        sequence: u32,
+        signing_pub_key: [33]u8,
+    ) OfferCreateTransaction {
+        return OfferCreateTransaction{
+            .base = types.Transaction{
+                .tx_type = .offer_create,
+                .account = account,
+                .fee = fee,
+                .sequence = sequence,
+                .signing_pub_key = signing_pub_key,
+            },
+            .taker_gets = taker_gets,
+            .taker_pays = taker_pays,
+        };
+    }
+
+    pub fn validate(self: *const OfferCreateTransaction) !void {
+        if (!amountIsPositive(self.taker_gets)) return error.InvalidTakerGets;
+        if (!amountIsPositive(self.taker_pays)) return error.InvalidTakerPays;
+    }
+};
+
+/// OfferCancel transaction - cancel an existing DEX offer.
+pub const OfferCancelTransaction = struct {
+    base: types.Transaction,
+    offer_sequence: u32,
+
+    pub fn create(
+        account: types.AccountID,
+        offer_sequence: u32,
+        fee: types.Drops,
+        sequence: u32,
+        signing_pub_key: [33]u8,
+    ) OfferCancelTransaction {
+        return OfferCancelTransaction{
+            .base = types.Transaction{
+                .tx_type = .offer_cancel,
+                .account = account,
+                .fee = fee,
+                .sequence = sequence,
+                .signing_pub_key = signing_pub_key,
+            },
+            .offer_sequence = offer_sequence,
+        };
+    }
+
+    pub fn validate(self: *const OfferCancelTransaction) !void {
+        if (self.offer_sequence == 0) return error.InvalidOfferSequence;
+    }
+};
+
 test "transaction validation" {
     const allocator = std.testing.allocator;
     var processor = try TransactionProcessor.init(allocator);
@@ -239,4 +309,34 @@ test "payment transaction creation" {
 
     try std.testing.expectEqual(types.TransactionType.payment, payment.base.tx_type);
     try std.testing.expectEqual(amount, payment.amount);
+}
+
+test "offer create transaction validation" {
+    const account = [_]u8{1} ** 20;
+    const gets = types.Amount.fromXRP(100 * types.XRP);
+    const pays = types.Amount.fromXRP(200 * types.XRP);
+
+    const tx = OfferCreateTransaction.create(
+        account,
+        gets,
+        pays,
+        types.MIN_TX_FEE,
+        10,
+        [_]u8{0} ** 33,
+    );
+    try tx.validate();
+    try std.testing.expectEqual(types.TransactionType.offer_create, tx.base.tx_type);
+}
+
+test "offer cancel transaction validation" {
+    const account = [_]u8{1} ** 20;
+    const tx = OfferCancelTransaction.create(
+        account,
+        55,
+        types.MIN_TX_FEE,
+        11,
+        [_]u8{0} ** 33,
+    );
+    try tx.validate();
+    try std.testing.expectEqual(types.TransactionType.offer_cancel, tx.base.tx_type);
 }
