@@ -17,17 +17,34 @@ pub fn validateBatchSequential(
     }
 }
 
-/// Placeholder for parallel validation (Zig async/thread pool)
-/// rippled v2.3.0 claims parallel validation; this explores the pattern.
+/// Parallel validation using thread pool (read-only on state)
 pub fn validateBatchParallel(
     allocator: std.mem.Allocator,
     processor: *const transaction.TransactionProcessor,
     state: *const ledger.AccountState,
     txs: []const types.Transaction,
 ) !void {
-    _ = allocator;
-    // TODO: Use std.Thread.Pool or async to parallelize validation
-    validateBatchSequential(processor, state, txs);
+    if (txs.len <= 4) {
+        return validateBatchSequential(processor, state, txs);
+    }
+    var pool: std.Thread.Pool = undefined;
+    try pool.init(.{ .allocator = allocator });
+    defer pool.deinit();
+
+    var wg: std.Thread.WaitGroup = .{};
+    for (txs, 0..) |_, i| {
+        const p = processor;
+        const s = state;
+        const txs_ref = txs;
+        const idx = i;
+        pool.spawnWg(&pool, &wg, struct {
+            fn validate(_p: *const transaction.TransactionProcessor, _s: *const ledger.AccountState, _txs: []const types.Transaction, _idx: usize) void {
+                const tx_ref = &_txs[_idx];
+                _ = _p.validateTransaction(tx_ref, _s) catch {};
+            }
+        }.validate, .{ p, s, txs_ref, idx });
+    }
+    wg.wait();
 }
 
 test "validate batch sequential" {

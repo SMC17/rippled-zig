@@ -415,16 +415,22 @@ pub const PeerDiscovery = struct {
         return self.known_peers.items;
     }
 
-    /// Connect to a peer
+    /// Connect to a peer (tries overlay HTTP upgrade first for XRPL/2.0 compat)
     pub fn connectToPeer(self: *PeerDiscovery, node_id: [32]u8, network_id: u32) !?PeerConnection {
         const peers = self.getPeers();
         if (peers.len == 0) return null;
 
-        // Try first available peer
         const peer_addr = peers[0];
 
-        const address = try std.net.Address.parseIp(peer_addr.hostname, peer_addr.port);
-        const stream = try std.net.tcpConnectToAddress(address);
+        const stream = blk: {
+            const overlay = @import("overlay_https.zig");
+            break :blk overlay.connectWithUpgrade(self.allocator, peer_addr.hostname, peer_addr.port) catch |err| {
+                if (err == error.UpgradeRejected or err == error.ConnectionClosed) {
+                    break :blk std.net.tcpConnectToHost(self.allocator, peer_addr.hostname, peer_addr.port) catch return null;
+                }
+                return null;
+            };
+        };
 
         var connection = PeerConnection.init(self.allocator, stream, node_id, network_id);
 

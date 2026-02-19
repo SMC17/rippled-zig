@@ -6,6 +6,7 @@ const peer_wire_pkg = @import("peer_wire.zig");
 const crypto_pqc_pkg = @import("crypto_pqc.zig");
 const lending_pkg = @import("lending.zig");
 const performance_pkg = @import("performance.zig");
+const _crypto_zk = @import("crypto_zk.zig");
 const types = @import("types.zig");
 const crypto = @import("crypto.zig");
 const network = @import("network.zig");

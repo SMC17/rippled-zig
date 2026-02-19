@@ -64,8 +64,11 @@ pub const Network = struct {
 
     /// Connect to a peer with handshake
     pub fn connectPeer(self: *Network, address: []const u8, port: u16, node_id: [32]u8, network_id: u32) !*Peer {
-        const addr = try std.net.Address.parseIp(address, port);
-        const stream = try std.net.tcpConnectToAddress(addr);
+        // Use tcpConnectToHost for hostname resolution; overlay_https for XRPL/2.0 upgrade when needed
+        const stream = std.net.tcpConnectToHost(self.allocator, address, port) catch blk: {
+            const addr = std.net.Address.parseIp(address, port) catch return error.ConnectionFailed;
+            break :blk try std.net.tcpConnectToAddress(addr);
+        };
 
         // Perform handshake
         const peer_proto = @import("peer_protocol.zig");
@@ -98,6 +101,20 @@ pub const Network = struct {
                 std.debug.print("Failed to send to peer: {}\n", .{err});
                 continue;
             };
+        }
+    }
+
+    /// Process incoming messages from all peers, dispatching to handler.
+    /// Runs one round; for continuous dispatch run in a loop/thread.
+    pub fn processIncoming(self: *Network, handler: *const fn (MessageType, []const u8) void) void {
+        for (self.peers.items) |*peer| {
+            if (!peer.connected) continue;
+            const msg = peer.receive(self.allocator) catch |err| {
+                if (err == error.ConnectionClosed) peer.connected = false;
+                continue;
+            };
+            defer self.allocator.free(msg.payload);
+            handler(msg.msg_type, msg.payload);
         }
     }
 

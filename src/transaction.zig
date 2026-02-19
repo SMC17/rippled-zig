@@ -16,7 +16,7 @@ pub const TransactionProcessor = struct {
     }
 
     pub fn deinit(self: *TransactionProcessor) void {
-        self.pending_transactions.deinit(self.allocator);
+        self.pending_transactions.deinit();
     }
 
     /// Validate a transaction

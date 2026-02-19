@@ -6,7 +6,8 @@ const peer_protocol = @import("peer_protocol.zig");
 
 /// Ledger Sync - Fetch and validate ledger history from network
 ///
-/// Supports forward sync and basic reorg handling (re-fetch on parent mismatch).
+/// Supports forward sync and basic reorg handling. Uses custom protocol;
+/// for live rippled sync, overlay TLS + XRPL binary format would be required.
 pub const LedgerSync = struct {
     allocator: std.mem.Allocator,
     ledger_manager: *ledger.LedgerManager,

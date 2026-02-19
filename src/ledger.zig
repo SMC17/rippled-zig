@@ -78,7 +78,7 @@ pub const LedgerManager = struct {
     pub fn init(allocator: std.mem.Allocator) !LedgerManager {
         var history = try std.ArrayList(Ledger).initCapacity(allocator, 100);
         const genesis = Ledger.genesis();
-        try history.append(allocator, genesis);
+        try history.append(genesis);
 
         return LedgerManager{
             .allocator = allocator,
@@ -88,7 +88,7 @@ pub const LedgerManager = struct {
     }
 
     pub fn deinit(self: *LedgerManager) void {
-        self.ledger_history.deinit(self.allocator);
+        self.ledger_history.deinit();
     }
 
     /// Get the current validated ledger

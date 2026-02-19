@@ -1,7 +1,8 @@
 //! Hook generation prototype: template-based Zig Hook → WASM
 //! Usage: zig run tools/hook_gen.zig -- [template] [output]
+//!        zig run tools/hook_gen.zig -- prompt "reject payments under 10 XRP"
 //! Templates: accept_all, amount_min
-//! Future: NL → template (requires LLM integration)
+//! NL mode: outputs a structured prompt for LLM to generate hook logic
 
 const std = @import("std");
 
@@ -14,15 +15,30 @@ pub fn main() !void {
     defer args.deinit();
 
     _ = args.next(); // exe name
-    const template = args.next() orelse "accept_all";
+    const cmd = args.next() orelse "accept_all";
     const output_path = args.next();
 
-    const source = if (std.mem.eql(u8, template, "amount_min"))
+    const out = std.io.getStdOut().writer();
+
+    if (std.mem.eql(u8, cmd, "prompt")) {
+        const nl = args.next() orelse "accept all transactions";
+        const prompt = try buildLlmPrompt(allocator, nl);
+        defer allocator.free(prompt);
+        if (output_path) |path| {
+            var file = try std.fs.cwd().createFile(path, .{});
+            defer file.close();
+            try file.writeAll(prompt);
+        } else {
+            try out.writeAll(prompt);
+        }
+        return;
+    }
+
+    const source = if (std.mem.eql(u8, cmd, "amount_min"))
         amountMinTemplate()
     else
         acceptAllTemplate();
 
-    const out = std.io.getStdOut().writer();
     if (output_path) |path| {
         var file = try std.fs.cwd().createFile(path, .{});
         defer file.close();
@@ -31,6 +47,21 @@ pub fn main() !void {
     } else {
         try out.writeAll(source);
     }
+}
+
+fn buildLlmPrompt(allocator: std.mem.Allocator, description: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator,
+        \\Generate an XRPL Hooks Zig module based on this description:
+        \\"{s}"
+        \\
+        \\Requirements:
+        \\- Export fn hook(reserved: u32) i64
+        \\- Export fn cbak(what: u32) i64
+        \\- Return 0 = accept, 1 = rollback
+        \\- Use Hook API: hook_param, etxn_details, etc. (extern "env")
+        \\
+        \\Output only valid Zig code, no markdown.
+    , .{description});
 }
 
 fn acceptAllTemplate() []const u8 {

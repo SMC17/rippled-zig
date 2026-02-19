@@ -60,8 +60,8 @@ pub const ConsensusEngine = struct {
     }
 
     pub fn deinit(self: *ConsensusEngine) void {
-        self.unl.deinit(self.allocator);
-        self.proposals.deinit(self.allocator);
+        self.unl.deinit();
+        self.proposals.deinit();
         if (self.our_position) |*pos| {
             pos.deinit(self.allocator);
         }
@@ -225,7 +225,7 @@ pub const ConsensusEngine = struct {
 
         // Build final transaction set from proposals
         var final_txs = try std.ArrayList(types.Transaction).initCapacity(self.allocator, 0);
-        defer final_txs.deinit(self.allocator);
+        defer final_txs.deinit();
 
         // Close the ledger
         const new_ledger = try self.ledger_manager.closeLedger(final_txs.items);

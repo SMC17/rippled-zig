@@ -69,6 +69,15 @@ jobs:
           cp zig-out/bin/rippled-zig zig-out/wasm/*.wasm zig-out/release/
           (cd zig-out/release && sha256sum -b rippled-zig *.wasm > SHA256SUMS)
           echo '{"version":"1.0","checksums":"SHA256SUMS"}' > zig-out/release/PROVENANCE.json
+      - name: Install cosign
+        if: secrets.COSIGN_PRIVATE_KEY != ''
+        uses: sigstore/cosign-installer@v3
+      - name: Sign release with cosign
+        if: secrets.COSIGN_PRIVATE_KEY != ''
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: cosign sign-blob zig-out/release/SHA256SUMS --output-signature zig-out/release/SHA256SUMS.sig
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:

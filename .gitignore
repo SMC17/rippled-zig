@@ -5,6 +5,7 @@ zig-out/
 .zig-global-cache/
 .zigup/
 artifacts/
+/zig
 
 # Private and internal documents
 private/
