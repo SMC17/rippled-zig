@@ -17,6 +17,10 @@
       "request": "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"\"}}",
       "expected_error": "Invalid submit params"
     },
+    "submit_non_hex_blob": {
+      "request": "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"DEADZEEF\"}}",
+      "expected_error": "Invalid submit params"
+    },
     "submit_blocked_in_production": {
       "request": "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"DEADBEEF\"}}",
       "expected_error": "Method blocked by profile policy"

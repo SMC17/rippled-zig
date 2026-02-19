@@ -334,6 +334,7 @@ fn assertRpcLiveNegativeContracts(server: *rpc.RpcServer, schema_payload: []cons
         "account_info_invalid_account",
         "submit_missing_blob",
         "submit_empty_blob",
+        "submit_non_hex_blob",
     };
 
     for (research_cases) |case_name| {

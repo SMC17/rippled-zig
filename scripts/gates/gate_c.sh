@@ -177,6 +177,7 @@ jq -e '.cases.account_info_missing_param.expected_error == "Invalid account_info
 jq -e '.cases.account_info_invalid_account.expected_error == "Invalid account_info params"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.submit_missing_blob.expected_error == "Invalid submit params"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.submit_empty_blob.expected_error == "Invalid submit params"' test_data/rpc_live_negative_schema.json > /dev/null
+jq -e '.cases.submit_non_hex_blob.expected_error == "Invalid submit params"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.submit_blocked_in_production.expected_error == "Method blocked by profile policy"' test_data/rpc_live_negative_schema.json > /dev/null
 
 # Cross-fixture consistency assertions.

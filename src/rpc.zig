@@ -388,6 +388,16 @@ pub const RpcServer = struct {
             else => return error.InvalidRequest,
         };
         if (tx_blob.len == 0) return error.InvalidRequest;
+        if (tx_blob.len % 2 != 0) return error.InvalidRequest;
+        // Keep submit payload bounded for request safety and deterministic behavior.
+        if (tx_blob.len > max_json_rpc_body_bytes * 2) return error.InvalidRequest;
+
+        for (tx_blob) |c| {
+            const is_hex = (c >= '0' and c <= '9') or
+                (c >= 'a' and c <= 'f') or
+                (c >= 'A' and c <= 'F');
+            if (!is_hex) return error.InvalidRequest;
+        }
         return try allocator.dupe(u8, tx_blob);
     }
 
@@ -786,4 +796,21 @@ test "production profile enforces rpc method allowlist" {
     const blocked_config_set = try server.handleJsonRpc("{\"method\":\"agent_config_set\",\"params\":{\"key\":\"max_peers\",\"value\":30}}");
     defer allocator.free(blocked_config_set);
     try std.testing.expect(std.mem.indexOf(u8, blocked_config_set, "Method blocked by profile policy") != null);
+}
+
+test "submit rejects non-hex tx_blob" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    var server = RpcServer.init(allocator, 5005, &lm, &state, &processor);
+    defer server.deinit();
+
+    const resp = try server.handleJsonRpc("{\"method\":\"submit\",\"params\":{\"tx_blob\":\"DEADZEEF\"}}");
+    defer allocator.free(resp);
+    try std.testing.expect(std.mem.indexOf(u8, resp, "Invalid submit params") != null);
 }
