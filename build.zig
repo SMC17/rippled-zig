@@ -118,4 +118,47 @@ pub fn build(b: *std.Build) void {
     const run_gate_e_tests = b.addRunArtifact(gate_e_exe);
     const gate_e_step = b.step("gate-e", "Run Gate E security checks");
     gate_e_step.dependOn(&run_gate_e_tests.step);
+
+    // WASM: Protocol kernel (hash/serialization subset)
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .freestanding,
+    });
+
+    const kernel_module = b.createModule(.{
+        .root_source_file = b.path("src/protocol_kernel.zig"),
+        .target = wasm_target,
+        .optimize = optimize,
+    });
+    const kernel_exe = b.addExecutable(.{
+        .name = "protocol_kernel",
+        .root_module = kernel_module,
+    });
+    kernel_exe.entry = .disabled;
+    const kernel_install = b.addInstallArtifact(kernel_exe, .{
+        .dest_dir = .{ .override = .{ .custom = "wasm" } },
+    });
+    const kernel_step = b.step("wasm-kernel", "Build protocol kernel as WASM");
+    kernel_step.dependOn(&kernel_install.step);
+
+    // WASM: Hooks template (depends on protocol kernel)
+    const hook_module = b.createModule(.{
+        .root_source_file = b.path("examples/hook_template.zig"),
+        .target = wasm_target,
+        .optimize = .ReleaseSmall,
+    });
+    const hook_exe = b.addExecutable(.{
+        .name = "hook_template",
+        .root_module = hook_module,
+    });
+    hook_exe.entry = .disabled;
+    const hook_install = b.addInstallArtifact(hook_exe, .{
+        .dest_dir = .{ .override = .{ .custom = "wasm" } },
+    });
+    const hook_step = b.step("wasm-hook", "Build Hooks template as WASM");
+    hook_step.dependOn(&hook_install.step);
+
+    const wasm_step = b.step("wasm", "Build all WASM targets (kernel + hook)");
+    wasm_step.dependOn(&kernel_install.step);
+    wasm_step.dependOn(&hook_install.step);
 }

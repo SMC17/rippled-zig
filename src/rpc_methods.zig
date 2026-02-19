@@ -432,6 +432,22 @@ pub const RpcMethods = struct {
             @memcpy(&destination, raw[34..54]);
             const amount = std.mem.readInt(u64, raw[54..62], .big);
             decoded.payment = .{ .destination = destination, .amount = amount };
+        } else if (tx_type == .offer_cancel) {
+            if (byte_len != 38) return error.InvalidTxBlob;
+            _ = std.mem.readInt(u32, raw[34..38], .big); // offer_sequence
+        } else if (tx_type == .offer_create) {
+            if (byte_len != 50) return error.InvalidTxBlob;
+            const taker_pays = std.mem.readInt(u64, raw[34..42], .big);
+            const taker_gets = std.mem.readInt(u64, raw[42..50], .big);
+            if (taker_pays == 0 or taker_gets == 0) return error.InvalidTxBlob;
+        } else if (tx_type == .escrow_create or tx_type == .escrow_finish or tx_type == .escrow_cancel or
+            tx_type == .check_create or tx_type == .check_cash or tx_type == .check_cancel or
+            tx_type == .payment_channel_create or tx_type == .payment_channel_fund or tx_type == .payment_channel_claim or
+            tx_type == .nftoken_mint or tx_type == .nftoken_burn or tx_type == .nftoken_create_offer or
+            tx_type == .nftoken_cancel_offer or tx_type == .nftoken_accept_offer or
+            tx_type == .account_delete or tx_type == .regular_key_set or tx_type == .deposit_preauth or tx_type == .signer_list_set)
+        {
+            if (byte_len != 34) return error.InvalidTxBlob;
         } else if (byte_len != 34) {
             return error.InvalidTxBlob;
         }

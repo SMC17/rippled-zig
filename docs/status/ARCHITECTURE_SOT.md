@@ -34,6 +34,14 @@ Scope: current `main` workspace
 - Allowlisted writes: `agent_config_set`
 - Mutable keys: `max_peers`, `fee_multiplier`, `strict_crypto_required`, `allow_unl_updates`
 
+## Modular Layout
+Logical package grouping (use `@import("modules.zig")` for clean imports):
+- **Consensus**: consensus.zig
+- **Ledger**: ledger.zig, transaction.zig, types.zig
+- **API**: rpc.zig, rpc_methods.zig
+- **Network**: network.zig, peer_protocol.zig, peer_wire.zig, ledger_sync.zig, websocket.zig
+- **Security**: security.zig, security_check.zig, parity_check.zig
+
 ## Hard Limits (Design Constraints)
 - Governance/accountability remains human-owned; autonomous changes require review/sign-off.
 - No unreviewed self-modifying path to production branches/releases.

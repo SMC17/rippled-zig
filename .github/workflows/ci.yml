@@ -31,20 +31,64 @@ jobs:
     - name: Check Formatting
       run: zig fmt --check src/ tests/
 
-  quality:
-    name: Code Quality
+  wasm:
+    name: WASM Build
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
       with:
         version: 0.15.1
-    
+
+    - name: Build WASM targets
+      run: zig build wasm
+
+    - name: Verify WASM artifacts
+      run: |
+        test -f zig-out/wasm/protocol_kernel.wasm
+        test -f zig-out/wasm/hook_template.wasm
+
+  release-provenance:
+    name: Release checksum provenance
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.1
+      - name: Build release
+        run: zig build -Doptimize=ReleaseSafe && zig build wasm
+      - name: Generate provenance
+        run: |
+          mkdir -p zig-out/release
+          cp zig-out/bin/rippled-zig zig-out/wasm/*.wasm zig-out/release/
+          (cd zig-out/release && sha256sum -b rippled-zig *.wasm > SHA256SUMS)
+          echo '{"version":"1.0","checksums":"SHA256SUMS"}' > zig-out/release/PROVENANCE.json
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ github.ref_name }}
+          path: zig-out/release
+
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.15.1
+
     - name: Format Check
       run: zig fmt --check .
-    
+
     - name: Build Check
       run: zig build --summary all

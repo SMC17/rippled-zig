@@ -29,6 +29,20 @@ const c = if (has_secp256k1) struct {
         msg32: [*c]const u8,
         pubkey: ?*const secp256k1_pubkey,
     ) c_int;
+    extern fn secp256k1_ecdsa_sign(
+        ctx: ?*const anyopaque,
+        sig: ?*secp256k1_ecdsa_signature,
+        msg32: [*c]const u8,
+        seckey: [*c]const u8,
+        noncefn: ?*const anyopaque,
+        ndata: ?*anyopaque,
+    ) c_int;
+    extern fn secp256k1_ecdsa_signature_serialize_der(
+        ctx: ?*const anyopaque,
+        output: [*c]u8,
+        outputlen: [*c]usize,
+        sig: ?*const secp256k1_ecdsa_signature,
+    ) c_int;
     extern fn secp256k1_ec_pubkey_parse(
         ctx: ?*const anyopaque,
         pubkey: ?*secp256k1_pubkey,
@@ -44,9 +58,12 @@ const c = if (has_secp256k1) struct {
 } else struct {};
 
 const SECP256K1_CONTEXT_VERIFY: c_uint = 0x0101;
+const SECP256K1_CONTEXT_SIGN: c_uint = 0x0201;
 
-/// secp256k1 context (singleton)
+/// secp256k1 context (singleton) - verify only
 var global_context: ?*anyopaque = null;
+/// secp256k1 signing context (singleton)
+var sign_context: ?*anyopaque = null;
 var context_mutex: std.Thread.Mutex = .{};
 
 /// Initialize secp256k1 context
@@ -71,10 +88,73 @@ pub fn deinit() void {
     context_mutex.lock();
     defer context_mutex.unlock();
 
+    if (sign_context) |ctx| {
+        c.secp256k1_context_destroy(ctx);
+        sign_context = null;
+    }
     if (global_context) |ctx| {
         c.secp256k1_context_destroy(ctx);
         global_context = null;
     }
+}
+
+/// Initialize signing context (lazy)
+fn initSign() !void {
+    if (!has_secp256k1) return error.LibraryUnavailable;
+
+    context_mutex.lock();
+    defer context_mutex.unlock();
+
+    if (sign_context == null) {
+        sign_context = c.secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+        if (sign_context == null) {
+            return error.ContextCreationFailed;
+        }
+    }
+}
+
+/// Sign message hash (32 bytes) with secret key (32 bytes), return DER-encoded signature
+pub fn signMessage(
+    secret_key: [32]u8,
+    message_hash: [32]u8,
+    allocator: std.mem.Allocator,
+) ![]u8 {
+    if (!has_secp256k1) return error.LibraryUnavailable;
+
+    try initSign();
+    const ctx = sign_context orelse return error.ContextNotInitialized;
+
+    var signature: secp256k1_ecdsa_signature = undefined;
+    const sign_result = c.secp256k1_ecdsa_sign(
+        ctx,
+        &signature,
+        &message_hash,
+        &secret_key,
+        null,
+        null,
+    );
+    if (sign_result != 1) {
+        return error.SignatureFailed;
+    }
+
+    // Serialize to DER - max 72 bytes for secp256k1
+    var der_len: usize = 80;
+    var der_buf = try allocator.alloc(u8, der_len);
+    errdefer allocator.free(der_buf);
+    const serialize_result = c.secp256k1_ecdsa_signature_serialize_der(
+        ctx,
+        der_buf.ptr,
+        &der_len,
+        &signature,
+    );
+    if (serialize_result != 1) {
+        allocator.free(der_buf);
+        return error.SerializeFailed;
+    }
+
+    const result = try allocator.dupe(der_buf[0..der_len]);
+    allocator.free(der_buf);
+    return result;
 }
 
 /// Verify ECDSA signature

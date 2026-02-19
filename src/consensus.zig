@@ -3,6 +3,20 @@ const types = @import("types.zig");
 const ledger = @import("ledger.zig");
 const crypto = @import("crypto.zig");
 
+/// Configurable consensus parameters for simulation and research
+pub const ConsensusConfig = struct {
+    /// Final agreement threshold (default 0.80 = 80%)
+    final_threshold: f64 = 0.80,
+    /// Open phase duration in ticks before moving to establish
+    open_phase_ticks: u32 = 20,
+    /// Open phase max wall-clock ms (fallback)
+    open_phase_ms: i64 = 2000,
+    /// Establish phase ticks before first consensus round
+    establish_phase_ticks: u32 = 5,
+    /// Min ticks per consensus threshold round (50/60/70/80)
+    consensus_round_ticks: u32 = 5,
+};
+
 /// XRP Ledger Consensus Protocol (Complete Implementation)
 /// Based on the Ripple Protocol Consensus Algorithm (RPCA)
 ///
@@ -21,6 +35,7 @@ pub const ConsensusEngine = struct {
     our_position: ?Position,
     ledger_manager: *ledger.LedgerManager,
     round_start_time: i64,
+    config: ConsensusConfig,
 
     pub fn init(allocator: std.mem.Allocator, ledger_manager: *ledger.LedgerManager) !ConsensusEngine {
         return ConsensusEngine{
@@ -33,7 +48,15 @@ pub const ConsensusEngine = struct {
             .our_position = null,
             .ledger_manager = ledger_manager,
             .round_start_time = 0,
+            .config = .{},
         };
+    }
+
+    /// Initialize with custom config (for simulation/research)
+    pub fn initWithConfig(allocator: std.mem.Allocator, ledger_manager: *ledger.LedgerManager, config: ConsensusConfig) !ConsensusEngine {
+        var engine = try init(allocator, ledger_manager);
+        engine.config = config;
+        return engine;
     }
 
     pub fn deinit(self: *ConsensusEngine) void {
@@ -111,60 +134,55 @@ pub const ConsensusEngine = struct {
     pub fn runRoundStep(self: *ConsensusEngine) !bool {
         const elapsed_ms = std.time.milliTimestamp() - self.round_start_time;
 
+        const cfg = &self.config;
         return switch (self.phase) {
             .open => |*time| {
-                // Open phase: collect transactions for ~2 seconds
                 time.* += 1;
-                if (time.* >= 20 or elapsed_ms > 2000) { // 20 ticks or 2 sec
+                if (time.* >= cfg.open_phase_ticks or elapsed_ms > cfg.open_phase_ms) {
                     self.phase = .{ .establish = 0 };
                     std.debug.print("Phase: ESTABLISH\n", .{});
                 }
                 return false;
             },
             .establish => |*time| {
-                // Establish phase: create and broadcast initial proposal
                 time.* += 1;
-                if (time.* >= 5) {
+                if (time.* >= cfg.establish_phase_ticks) {
                     self.phase = .{ .consensus_50 = 0 };
                     std.debug.print("Phase: CONSENSUS 50%\n", .{});
                 }
                 return false;
             },
             .consensus_50 => |*time| {
-                // 50% threshold round
                 time.* += 1;
                 const agreement = try self.calculateAgreement();
-                if (agreement >= 0.50 and time.* >= 5) {
+                if (agreement >= 0.50 and time.* >= cfg.consensus_round_ticks) {
                     self.phase = .{ .consensus_60 = 0 };
                     std.debug.print("Phase: CONSENSUS 60% (agreement: {d:.1}%)\n", .{agreement * 100});
                 }
                 return false;
             },
             .consensus_60 => |*time| {
-                // 60% threshold round
                 time.* += 1;
                 const agreement = try self.calculateAgreement();
-                if (agreement >= 0.60 and time.* >= 5) {
+                if (agreement >= 0.60 and time.* >= cfg.consensus_round_ticks) {
                     self.phase = .{ .consensus_70 = 0 };
                     std.debug.print("Phase: CONSENSUS 70% (agreement: {d:.1}%)\n", .{agreement * 100});
                 }
                 return false;
             },
             .consensus_70 => |*time| {
-                // 70% threshold round
                 time.* += 1;
                 const agreement = try self.calculateAgreement();
-                if (agreement >= 0.70 and time.* >= 5) {
+                if (agreement >= 0.70 and time.* >= cfg.consensus_round_ticks) {
                     self.phase = .{ .consensus_80 = 0 };
                     std.debug.print("Phase: CONSENSUS 80% (agreement: {d:.1}%)\n", .{agreement * 100});
                 }
                 return false;
             },
             .consensus_80 => |*time| {
-                // 80% threshold round - consensus achieved!
                 time.* += 1;
                 const agreement = try self.calculateAgreement();
-                if (agreement >= 0.80) {
+                if (agreement >= cfg.final_threshold) {
                     self.phase = .validation;
                     self.state = .accepted;
                     std.debug.print("Phase: VALIDATION (agreement: {d:.1}%)\n", .{agreement * 100});

@@ -95,9 +95,27 @@ pub const KeyPair = struct {
                 return try allocator.dupe(u8, &sig_bytes);
             },
             .secp256k1 => {
-                // ECDSA secp256k1 would be implemented here
-                // Requires external library or custom implementation
-                return error.NotImplemented;
+                if (self.private_key.len != 32) {
+                    return error.InvalidKeyLength;
+                }
+                var seckey: [32]u8 = undefined;
+                @memcpy(&seckey, self.private_key);
+
+                // XRPL secp256k1: sign SHA512Half(0x53 0x54 0x58 0x00 || data)
+                const stx: [4]u8 = .{ 0x53, 0x54, 0x58, 0x00 };
+                var msg_hash: [32]u8 = undefined;
+                if (data.len == 32) {
+                    @memcpy(&msg_hash, data);
+                } else {
+                    var buf = try allocator.alloc(u8, 4 + data.len);
+                    defer allocator.free(buf);
+                    @memcpy(buf[0..4], &stx);
+                    @memcpy(buf[4..], data);
+                    msg_hash = Hash.sha512Half(buf);
+                }
+
+                const secp = @import("secp256k1_binding.zig");
+                return secp.signMessage(seckey, msg_hash, allocator);
             },
         }
     }

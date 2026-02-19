@@ -213,6 +213,8 @@ fn assertAgentConfigGetSchema(config_payload: []const u8, schema_payload: []cons
 }
 
 fn assertRpcLiveMethodsContracts(
+    server_info_payload: []const u8,
+    fee_payload: []const u8,
     account_info_payload: []const u8,
     submit_payload: []const u8,
     ping_payload: []const u8,
@@ -220,6 +222,10 @@ fn assertRpcLiveMethodsContracts(
     schema_payload: []const u8,
     allocator: std.mem.Allocator,
 ) !void {
+    var server_info_parsed = try std.json.parseFromSlice(std.json.Value, allocator, server_info_payload, .{});
+    defer server_info_parsed.deinit();
+    var fee_parsed = try std.json.parseFromSlice(std.json.Value, allocator, fee_payload, .{});
+    defer fee_parsed.deinit();
     var account_parsed = try std.json.parseFromSlice(std.json.Value, allocator, account_info_payload, .{});
     defer account_parsed.deinit();
     var submit_parsed = try std.json.parseFromSlice(std.json.Value, allocator, submit_payload, .{});
@@ -233,6 +239,71 @@ fn assertRpcLiveMethodsContracts(
 
     const schema_root = try getObject(schema_parsed.value);
     const methods = try getObject(try getField(schema_root, "methods"));
+
+    // server_info
+    {
+        const server_info_schema = try getObject(try getField(methods, "server_info"));
+        const server_info_root = try getObject(server_info_parsed.value);
+        const req_fields = switch (try getField(server_info_schema, "required_fields")) {
+            .array => |arr| arr.items,
+            else => return error.ExpectedArray,
+        };
+        try ensureRequiredFields(server_info_root, req_fields);
+
+        const server_info_result = try getObject(try getField(server_info_root, "result"));
+        const req_result_fields = switch (try getField(server_info_schema, "required_result_fields")) {
+            .array => |arr| arr.items,
+            else => return error.ExpectedArray,
+        };
+        try ensureRequiredFields(server_info_result, req_result_fields);
+
+        const info = try getObject(try getField(server_info_result, "info"));
+        const req_info_fields = switch (try getField(server_info_schema, "required_info_fields")) {
+            .array => |arr| arr.items,
+            else => return error.ExpectedArray,
+        };
+        try ensureRequiredFields(info, req_info_fields);
+
+        const validated_ledger = try getObject(try getField(info, "validated_ledger"));
+        const req_vl_fields = switch (try getField(server_info_schema, "required_validated_ledger_fields")) {
+            .array => |arr| arr.items,
+            else => return error.ExpectedArray,
+        };
+        try ensureRequiredFields(validated_ledger, req_vl_fields);
+
+        const expected_status = try getString(try getField(server_info_schema, "expected_status"));
+        const actual_status = try getString(try getField(server_info_result, "status"));
+        if (!std.mem.eql(u8, actual_status, expected_status)) return error.RpcContractMismatch;
+    }
+
+    // fee
+    {
+        const fee_schema = try getObject(try getField(methods, "fee"));
+        const fee_root = try getObject(fee_parsed.value);
+        const req_fields = switch (try getField(fee_schema, "required_fields")) {
+            .array => |arr| arr.items,
+            else => return error.ExpectedArray,
+        };
+        try ensureRequiredFields(fee_root, req_fields);
+
+        const fee_result = try getObject(try getField(fee_root, "result"));
+        const req_result_fields = switch (try getField(fee_schema, "required_result_fields")) {
+            .array => |arr| arr.items,
+            else => return error.ExpectedArray,
+        };
+        try ensureRequiredFields(fee_result, req_result_fields);
+
+        const drops = try getObject(try getField(fee_result, "drops"));
+        const req_drops_fields = switch (try getField(fee_schema, "required_drops_fields")) {
+            .array => |arr| arr.items,
+            else => return error.ExpectedArray,
+        };
+        try ensureRequiredFields(drops, req_drops_fields);
+
+        const expected_status = try getString(try getField(fee_schema, "expected_status"));
+        const actual_status = try getString(try getField(fee_result, "status"));
+        if (!std.mem.eql(u8, actual_status, expected_status)) return error.RpcContractMismatch;
+    }
 
     // account_info
     {
@@ -347,6 +418,7 @@ fn assertRpcLiveNegativeContracts(server: *rpc.RpcServer, schema_payload: []cons
         "submit_empty_blob",
         "submit_non_hex_blob",
         "submit_invalid_blob_structure",
+        "submit_account_set_wrong_length",
         "submit_missing_destination_account",
         "submit_insufficient_payment_balance",
     };
@@ -995,6 +1067,6 @@ pub fn main() !void {
     try assertStrictSecpVectors(allocator);
     try assertAgentStatusSchema(agent_status, fixture_agent_schema, allocator);
     try assertAgentConfigGetSchema(agent_config_get, fixture_agent_config_schema, allocator);
-    try assertRpcLiveMethodsContracts(account_info, submit, ping, ledger_current, fixture_rpc_live_methods_schema, allocator);
+    try assertRpcLiveMethodsContracts(server_info, fee, account_info, submit, ping, ledger_current, fixture_rpc_live_methods_schema, allocator);
     try assertRpcLiveNegativeContracts(&rpc_server, fixture_rpc_live_negative_schema, allocator);
 }

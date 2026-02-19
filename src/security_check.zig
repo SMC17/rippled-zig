@@ -132,9 +132,60 @@ pub fn main() !void {
         _ = security.Security.InputValidator.validateNumber("123", 0, 1000) catch {};
     }
 
+    // Property-based tx sequence fuzz: random tx sequences through validate + invariants
+    const tx_fuzz_target: u32 = if (is_nightly) 5000 else 1500;
+    var tx_fuzz_prng = std.Random.DefaultPrng.init(0xDEADBEEF);
+    const tx_random = tx_fuzz_prng.random();
+    var tx_fuzz_executed: u32 = 0;
+
+    const tx_types = [_]types.TransactionType{ .payment, .account_set, .trust_set, .offer_create, .offer_cancel };
+    var acc_buf: [5][20]u8 = undefined;
+    for (&acc_buf, 0..) |*acc, i| {
+        tx_random.bytes(acc);
+        acc[0] = @intCast(i + 1); // Distinct first byte
+    }
+
+    while (tx_fuzz_executed < tx_fuzz_target) : (tx_fuzz_executed += 1) {
+        var tx_state = ledger.AccountState.init(allocator);
+        defer tx_state.deinit();
+        var proc = try transaction.TransactionProcessor.init(allocator);
+        defer proc.deinit();
+
+        const num_accounts = tx_random.uintAtMost(u32, 4) + 1;
+        for (acc_buf[0..num_accounts], 0..) |acc, i| {
+            const bal = types.MIN_TX_FEE * (tx_random.uintAtMost(u64, 100) + 1);
+            try tx_state.putAccount(.{
+                .account = acc,
+                .balance = bal,
+                .flags = .{},
+                .owner_count = 0,
+                .previous_txn_id = [_]u8{0} ** 32,
+                .previous_txn_lgr_seq = 1,
+                .sequence = @intCast(i + 1),
+            });
+        }
+
+        const num_txs = tx_random.uintAtMost(u32, 20) + 1;
+        const sum_before = tx_state.sumBalances();
+        for (0..num_txs) |_| {
+            const acc_idx = tx_random.uintAtMost(usize, num_accounts - 1);
+            const acc = tx_state.getAccount(acc_buf[acc_idx]) orelse continue;
+            const fuzz_tx = types.Transaction{
+                .tx_type = tx_types[tx_random.uintAtMost(usize, tx_types.len - 1)],
+                .account = acc_buf[acc_idx],
+                .fee = types.MIN_TX_FEE,
+                .sequence = acc.sequence,
+            };
+            _ = proc.validateTransaction(&fuzz_tx, &tx_state) catch {};
+        }
+        const sum_after = tx_state.sumBalances();
+        if (sum_before != sum_after) return error.InvariantViolation; // validate must not mutate
+    }
+
     const total_corpus_seeds = corpus.len + if (is_nightly) nightly_extra_corpus.len else 0;
     std.debug.print("FUZZ_PROFILE: {s}\n", .{build_options.gate_e_profile});
     std.debug.print("CORPUS_SEEDS: {d}\n", .{total_corpus_seeds});
+    std.debug.print("TX_FUZZ_CASES: {d}\n", .{tx_fuzz_executed});
     std.debug.print("CRASH_FREE: 1\n", .{});
     std.debug.print("FUZZ_CASES: {d}\n", .{fuzz_cases_executed});
 }

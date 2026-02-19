@@ -1,4 +1,5 @@
 const std = @import("std");
+const peer_protocol = @import("peer_protocol.zig");
 
 /// Peer-to-peer networking for XRPL nodes
 pub const Network = struct {
@@ -107,6 +108,15 @@ pub const Network = struct {
             if (peer.connected) count += 1;
         }
         return count;
+    }
+
+    /// Connect to testnet peer (s.altnet.rippletest.net:51235)
+    /// Note: Real rippled uses XRPL/2.0 over HTTPS; our custom protocol may not interconnect.
+    pub fn connectToTestnet(self: *Network, node_id: [32]u8, network_id: u32) ?*Peer {
+        return self.connectPeer("s.altnet.rippletest.net", 51235, node_id, network_id) catch |err| {
+            std.debug.print("[WARN] Testnet connect failed: {}\n", .{err});
+            return null;
+        };
     }
 };
 

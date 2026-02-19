@@ -158,6 +158,14 @@ pub const LedgerManager = struct {
         return new_ledger;
     }
 
+    /// Append a ledger received from sync (parent must match current)
+    pub fn appendLedger(self: *LedgerManager, new_ledger: Ledger) !void {
+        if (new_ledger.sequence != self.current_ledger.sequence + 1) return error.SequenceGap;
+        if (!std.mem.eql(u8, &new_ledger.parent_hash, &self.current_ledger.hash)) return error.ParentHashMismatch;
+        try self.ledger_history.append(self.allocator, new_ledger);
+        self.current_ledger = new_ledger;
+    }
+
     /// Validate a ledger hash
     pub fn validateLedger(ledger: *const Ledger) bool {
         const calculated = ledger.calculateHash();
@@ -194,6 +202,24 @@ pub const AccountState = struct {
     /// Check if an account exists
     pub fn hasAccount(self: *const AccountState, account_id: types.AccountID) bool {
         return self.accounts.contains(account_id);
+    }
+
+    /// Sum of all account balances (for invariant checks)
+    pub fn sumBalances(self: *const AccountState) types.Drops {
+        var sum: types.Drops = 0;
+        var iter = self.accounts.iterator();
+        while (iter.next()) |entry| {
+            sum +%= entry.value_ptr.balance;
+        }
+        return sum;
+    }
+
+    /// Iterate accounts for invariant checks. Callback receives (ctx, account_id, account_root).
+    pub fn forEach(self: *const AccountState, ctx: anytype, comptime callback: fn (@TypeOf(ctx), types.AccountID, types.AccountRoot) void) void {
+        var iter = self.accounts.iterator();
+        while (iter.next()) |entry| {
+            callback(ctx, entry.key_ptr.*, entry.value_ptr.*);
+        }
     }
 };
 
