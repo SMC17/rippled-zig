@@ -316,24 +316,28 @@ pub const RpcMethods = struct {
             , .{engine});
         }
 
-        // Minimal local apply path: update sender sequence and deduct fee.
-        var account = self.account_state.getAccount(tx.account) orelse return error.AccountNotFound;
-        account.sequence += 1;
-        account.balance -= tx.fee;
-        try self.account_state.putAccount(account);
+        // Minimal local apply path:
+        // - non-payment: sender sequence + fee debit
+        // - payment: sender sequence + (fee + amount) debit, destination credit
+        var sender = self.account_state.getAccount(tx.account) orelse return error.AccountNotFound;
 
-        // Payment extension path: transfer value between existing local accounts.
         if (decoded.payment) |payment| {
             if (payment.amount == 0) return error.InvalidPaymentAmount;
-
-            var sender = self.account_state.getAccount(tx.account) orelse return error.AccountNotFound;
-            if (sender.balance < payment.amount) return error.InsufficientPaymentBalance;
             var destination = self.account_state.getAccount(payment.destination) orelse return error.DestinationAccountNotFound;
 
-            sender.balance -= payment.amount;
+            // Validate sender can cover payment amount in addition to fee.
+            const balance_after_fee = sender.balance - tx.fee;
+            if (balance_after_fee < payment.amount) return error.InsufficientPaymentBalance;
+
+            sender.sequence += 1;
+            sender.balance = balance_after_fee - payment.amount;
             destination.balance += payment.amount;
             try self.account_state.putAccount(sender);
             try self.account_state.putAccount(destination);
+        } else {
+            sender.sequence += 1;
+            sender.balance -= tx.fee;
+            try self.account_state.putAccount(sender);
         }
 
         try self.tx_processor.submitTransaction(tx);

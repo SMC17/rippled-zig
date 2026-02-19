@@ -865,3 +865,51 @@ test "submit rejects malformed tx_blob structure" {
     defer allocator.free(resp);
     try std.testing.expect(std.mem.indexOf(u8, resp, "Invalid submit tx_blob") != null);
 }
+
+test "submit payment errors are deterministic" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    const sender = [_]u8{1} ** 20;
+    const existing_destination = [_]u8{2} ** 20;
+    try state.putAccount(.{
+        .account = sender,
+        .balance = 2 * 1_000_000,
+        .flags = .{},
+        .owner_count = 0,
+        .previous_txn_id = [_]u8{0} ** 32,
+        .previous_txn_lgr_seq = 1,
+        .sequence = 8,
+    });
+    try state.putAccount(.{
+        .account = existing_destination,
+        .balance = 1 * 1_000_000,
+        .flags = .{},
+        .owner_count = 0,
+        .previous_txn_id = [_]u8{0} ** 32,
+        .previous_txn_lgr_seq = 1,
+        .sequence = 1,
+    });
+
+    var server = RpcServer.init(allocator, 5005, &lm, &state, &processor);
+    defer server.deinit();
+
+    // destination account 0x03*20 does not exist
+    const missing_dest_req =
+        "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"00000101010101010101010101010101010101010101000000000000000A00000008030303030303030303030303030303030303030300000000000003E8\"}}";
+    const missing_dest_resp = try server.handleJsonRpc(missing_dest_req);
+    defer allocator.free(missing_dest_resp);
+    try std.testing.expect(std.mem.indexOf(u8, missing_dest_resp, "Submit destination account not found") != null);
+
+    // account has ~2 XRP and cannot pay 200 XRP.
+    const insufficient_req =
+        "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"00000101010101010101010101010101010101010101000000000000000A000000080202020202020202020202020202020202020202000000000BEBC200\"}}";
+    const insufficient_resp = try server.handleJsonRpc(insufficient_req);
+    defer allocator.free(insufficient_resp);
+    try std.testing.expect(std.mem.indexOf(u8, insufficient_resp, "Insufficient submit payment balance") != null);
+}
