@@ -20,6 +20,16 @@ pub const RpcMethods = struct {
         allow_unl_updates: bool = false,
     };
 
+    const PaymentSubmitDetails = struct {
+        destination: types.AccountID,
+        amount: types.Drops,
+    };
+
+    const SubmitDecodedTx = struct {
+        tx: types.Transaction,
+        payment: ?PaymentSubmitDetails = null,
+    };
+
     allocator: std.mem.Allocator,
     ledger_manager: *ledger.LedgerManager,
     account_state: *ledger.AccountState,
@@ -279,7 +289,8 @@ pub const RpcMethods = struct {
 
     /// submit - Submit a signed transaction
     pub fn submit(self: *RpcMethods, tx_blob: []const u8) ![]u8 {
-        const tx = try parseMinimalSubmitTxBlob(tx_blob);
+        const decoded = try parseMinimalSubmitTxBlob(tx_blob);
+        const tx = decoded.tx;
         const validation = try self.tx_processor.validateTransaction(&tx, self.account_state);
 
         if (validation != .tes_success) {
@@ -305,14 +316,54 @@ pub const RpcMethods = struct {
             , .{engine});
         }
 
-        // Minimal local apply path: update sender account sequence and deduct fee.
+        // Minimal local apply path: update sender sequence and deduct fee.
         var account = self.account_state.getAccount(tx.account) orelse return error.AccountNotFound;
         account.sequence += 1;
         account.balance -= tx.fee;
         try self.account_state.putAccount(account);
 
+        // Payment extension path: transfer value between existing local accounts.
+        if (decoded.payment) |payment| {
+            if (payment.amount == 0) return error.InvalidPaymentAmount;
+
+            var sender = self.account_state.getAccount(tx.account) orelse return error.AccountNotFound;
+            if (sender.balance < payment.amount) return error.InsufficientPaymentBalance;
+            var destination = self.account_state.getAccount(payment.destination) orelse return error.DestinationAccountNotFound;
+
+            sender.balance -= payment.amount;
+            destination.balance += payment.amount;
+            try self.account_state.putAccount(sender);
+            try self.account_state.putAccount(destination);
+        }
+
         try self.tx_processor.submitTransaction(tx);
         const pending_count = self.tx_processor.getPendingTransactions().len;
+
+        if (decoded.payment) |payment| {
+            const destination_addr = try base58.Base58.encodeAccountID(self.allocator, payment.destination);
+            defer self.allocator.free(destination_addr);
+
+            return try std.fmt.allocPrint(self.allocator,
+                \\{{
+                \\  "result": {{
+                \\    "engine_result": "tesSUCCESS",
+                \\    "engine_result_code": 0,
+                \\    "engine_result_message": "The transaction was applied.",
+                \\    "status": "success",
+                \\    "tx_json": {{
+                \\      "TransactionType": "{s}",
+                \\      "Fee": "{d}",
+                \\      "Sequence": {d},
+                \\      "Destination": "{s}",
+                \\      "Amount": "{d}"
+                \\    }},
+                \\    "validated": false,
+                \\    "kept": true,
+                \\    "queued": {d}
+                \\  }}
+                \\}}
+            , .{ @tagName(tx.tx_type), tx.fee, tx.sequence, destination_addr, payment.amount, pending_count });
+        }
 
         return try std.fmt.allocPrint(self.allocator,
             \\{{
@@ -334,17 +385,21 @@ pub const RpcMethods = struct {
         , .{ @tagName(tx.tx_type), tx.fee, tx.sequence, pending_count });
     }
 
-    fn parseMinimalSubmitTxBlob(tx_blob_hex: []const u8) !types.Transaction {
+    fn parseMinimalSubmitTxBlob(tx_blob_hex: []const u8) !SubmitDecodedTx {
         // Minimal wire format:
         // [0..2): u16 tx_type (BE)
         // [2..22): account (20 bytes)
         // [22..30): fee (u64 BE)
         // [30..34): sequence (u32 BE)
+        // Payment extension when tx_type=payment:
+        // [34..54): destination (20 bytes)
+        // [54..62): amount in drops (u64 BE)
         if (tx_blob_hex.len == 0 or tx_blob_hex.len % 2 != 0) return error.InvalidTxBlob;
-
-        var raw: [34]u8 = undefined;
-        if (tx_blob_hex.len != raw.len * 2) return error.InvalidTxBlob;
-        _ = std.fmt.hexToBytes(&raw, tx_blob_hex) catch return error.InvalidTxBlob;
+        const byte_len = tx_blob_hex.len / 2;
+        if (byte_len < 34) return error.InvalidTxBlob;
+        var raw: [62]u8 = undefined;
+        if (byte_len > raw.len) return error.InvalidTxBlob;
+        _ = std.fmt.hexToBytes(raw[0..byte_len], tx_blob_hex) catch return error.InvalidTxBlob;
 
         const tx_type_raw = std.mem.readInt(u16, raw[0..2], .big);
         const tx_type = std.meta.intToEnum(types.TransactionType, tx_type_raw) catch return error.UnsupportedTransactionType;
@@ -355,15 +410,29 @@ pub const RpcMethods = struct {
         const tx_fee = std.mem.readInt(u64, raw[22..30], .big);
         const sequence = std.mem.readInt(u32, raw[30..34], .big);
 
-        return types.Transaction{
-            .tx_type = tx_type,
-            .account = account,
-            .fee = tx_fee,
-            .sequence = sequence,
-            .signing_pub_key = null,
-            .txn_signature = null,
-            .signers = null,
+        var decoded = SubmitDecodedTx{
+            .tx = types.Transaction{
+                .tx_type = tx_type,
+                .account = account,
+                .fee = tx_fee,
+                .sequence = sequence,
+                .signing_pub_key = null,
+                .txn_signature = null,
+                .signers = null,
+            },
         };
+
+        if (tx_type == .payment) {
+            if (byte_len != 62) return error.InvalidTxBlob;
+            var destination: types.AccountID = undefined;
+            @memcpy(&destination, raw[34..54]);
+            const amount = std.mem.readInt(u64, raw[54..62], .big);
+            decoded.payment = .{ .destination = destination, .amount = amount };
+        } else if (byte_len != 34) {
+            return error.InvalidTxBlob;
+        }
+
+        return decoded;
     }
 
     /// ledger_current - Get current working ledger index
@@ -648,14 +717,30 @@ fn makeMinimalSubmitBlob(
     account: types.AccountID,
     fee: types.Drops,
     sequence: u32,
+    destination: ?types.AccountID,
+    amount: ?types.Drops,
 ) ![]u8 {
-    var raw: [34]u8 = undefined;
+    const hex_alphabet = "0123456789ABCDEF";
+    var raw: [62]u8 = undefined;
     std.mem.writeInt(u16, raw[0..2], @intFromEnum(tx_type), .big);
     @memcpy(raw[2..22], &account);
     std.mem.writeInt(u64, raw[22..30], fee, .big);
     std.mem.writeInt(u32, raw[30..34], sequence, .big);
-    const encoded = std.fmt.bytesToHex(raw, .upper);
-    return try allocator.dupe(u8, &encoded);
+    var used: usize = 34;
+    if (tx_type == .payment) {
+        const dest = destination orelse return error.MissingPaymentDestination;
+        const drops = amount orelse return error.MissingPaymentAmount;
+        @memcpy(raw[34..54], &dest);
+        std.mem.writeInt(u64, raw[54..62], drops, .big);
+        used = 62;
+    }
+    const encoded = try allocator.alloc(u8, used * 2);
+    errdefer allocator.free(encoded);
+    for (raw[0..used], 0..) |b, i| {
+        encoded[i * 2] = hex_alphabet[b >> 4];
+        encoded[i * 2 + 1] = hex_alphabet[b & 0x0F];
+    }
+    return encoded;
 }
 
 test "submit minimal path validates applies and queues transaction" {
@@ -670,6 +755,7 @@ test "submit minimal path validates applies and queues transaction" {
     defer processor.deinit();
 
     const account = [_]u8{1} ** 20;
+    const destination = [_]u8{9} ** 20;
     try state.putAccount(.{
         .account = account,
         .balance = 1000 * types.XRP,
@@ -679,19 +765,32 @@ test "submit minimal path validates applies and queues transaction" {
         .previous_txn_lgr_seq = 1,
         .sequence = 7,
     });
+    try state.putAccount(.{
+        .account = destination,
+        .balance = 5 * types.XRP,
+        .flags = .{},
+        .owner_count = 0,
+        .previous_txn_id = [_]u8{0} ** 32,
+        .previous_txn_lgr_seq = 1,
+        .sequence = 1,
+    });
 
     var methods = RpcMethods.init(allocator, &lm, &state, &processor);
-    const blob = try makeMinimalSubmitBlob(allocator, .payment, account, types.MIN_TX_FEE, 7);
+    const blob = try makeMinimalSubmitBlob(allocator, .payment, account, types.MIN_TX_FEE, 7, destination, 2 * types.XRP);
     defer allocator.free(blob);
 
     const res = try methods.submit(blob);
     defer allocator.free(res);
     try std.testing.expect(std.mem.indexOf(u8, res, "\"status\": \"success\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, res, "\"Destination\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, res, "\"Amount\": \"2000000\"") != null);
     try std.testing.expectEqual(@as(usize, 1), processor.getPendingTransactions().len);
 
     const updated = state.getAccount(account).?;
+    const updated_dest = state.getAccount(destination).?;
     try std.testing.expectEqual(@as(u32, 8), updated.sequence);
-    try std.testing.expectEqual(@as(types.Drops, 1000 * types.XRP - types.MIN_TX_FEE), updated.balance);
+    try std.testing.expectEqual(@as(types.Drops, 1000 * types.XRP - types.MIN_TX_FEE - 2 * types.XRP), updated.balance);
+    try std.testing.expectEqual(@as(types.Drops, 7 * types.XRP), updated_dest.balance);
 }
 
 test "submit minimal path returns validation error on bad sequence" {
@@ -706,6 +805,7 @@ test "submit minimal path returns validation error on bad sequence" {
     defer processor.deinit();
 
     const account = [_]u8{2} ** 20;
+    const destination = [_]u8{8} ** 20;
     try state.putAccount(.{
         .account = account,
         .balance = 1000 * types.XRP,
@@ -715,9 +815,18 @@ test "submit minimal path returns validation error on bad sequence" {
         .previous_txn_lgr_seq = 1,
         .sequence = 10,
     });
+    try state.putAccount(.{
+        .account = destination,
+        .balance = 1 * types.XRP,
+        .flags = .{},
+        .owner_count = 0,
+        .previous_txn_id = [_]u8{0} ** 32,
+        .previous_txn_lgr_seq = 1,
+        .sequence = 1,
+    });
 
     var methods = RpcMethods.init(allocator, &lm, &state, &processor);
-    const blob = try makeMinimalSubmitBlob(allocator, .payment, account, types.MIN_TX_FEE, 9);
+    const blob = try makeMinimalSubmitBlob(allocator, .payment, account, types.MIN_TX_FEE, 9, destination, 100);
     defer allocator.free(blob);
 
     const res = try methods.submit(blob);

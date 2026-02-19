@@ -291,6 +291,17 @@ fn assertRpcLiveMethodsContracts(
         const expected_engine_result = try getString(try getField(submit_schema, "expected_engine_result"));
         const actual_engine_result = try getString(try getField(submit_result, "engine_result"));
         if (!std.mem.eql(u8, actual_engine_result, expected_engine_result)) return error.RpcContractMismatch;
+
+        const submit_tx_json = try getObject(try getField(submit_result, "tx_json"));
+        const req_tx_json_fields = switch (try getField(submit_schema, "required_tx_json_fields")) {
+            .array => |arr| arr.items,
+            else => return error.ExpectedArray,
+        };
+        try ensureRequiredFields(submit_tx_json, req_tx_json_fields);
+
+        const expected_tx_type = try getString(try getField(submit_schema, "expected_tx_type"));
+        const actual_tx_type = try getString(try getField(submit_tx_json, "TransactionType"));
+        if (!std.mem.eql(u8, actual_tx_type, expected_tx_type)) return error.RpcContractMismatch;
     }
 
     // ping
@@ -377,14 +388,30 @@ fn makeMinimalSubmitBlob(
     account: types.AccountID,
     fee: types.Drops,
     sequence: u32,
+    destination: ?types.AccountID,
+    amount: ?types.Drops,
 ) ![]u8 {
-    var raw: [34]u8 = undefined;
+    const hex_alphabet = "0123456789ABCDEF";
+    var raw: [62]u8 = undefined;
     std.mem.writeInt(u16, raw[0..2], @intFromEnum(tx_type), .big);
     @memcpy(raw[2..22], &account);
     std.mem.writeInt(u64, raw[22..30], fee, .big);
     std.mem.writeInt(u32, raw[30..34], sequence, .big);
-    const encoded = std.fmt.bytesToHex(raw, .upper);
-    return try allocator.dupe(u8, &encoded);
+    var used: usize = 34;
+    if (tx_type == .payment) {
+        const dest = destination orelse return error.MissingPaymentDestination;
+        const drops = amount orelse return error.MissingPaymentAmount;
+        @memcpy(raw[34..54], &dest);
+        std.mem.writeInt(u64, raw[54..62], drops, .big);
+        used = 62;
+    }
+    const encoded = try allocator.alloc(u8, used * 2);
+    errdefer allocator.free(encoded);
+    for (raw[0..used], 0..) |b, i| {
+        encoded[i * 2] = hex_alphabet[b >> 4];
+        encoded[i * 2 + 1] = hex_alphabet[b & 0x0F];
+    }
+    return encoded;
 }
 
 fn parseHex32(hex: []const u8) ![32]u8 {
@@ -892,6 +919,7 @@ pub fn main() !void {
     defer processor.deinit();
 
     const account = [_]u8{1} ** 20;
+    const destination = [_]u8{2} ** 20;
     try state.putAccount(.{
         .account = account,
         .balance = 123 * types.XRP,
@@ -900,6 +928,15 @@ pub fn main() !void {
         .previous_txn_id = [_]u8{0} ** 32,
         .previous_txn_lgr_seq = 1,
         .sequence = 7,
+    });
+    try state.putAccount(.{
+        .account = destination,
+        .balance = 3 * types.XRP,
+        .flags = .{},
+        .owner_count = 0,
+        .previous_txn_id = [_]u8{0} ** 32,
+        .previous_txn_lgr_seq = 1,
+        .sequence = 1,
     });
 
     var methods = rpc_methods.RpcMethods.init(allocator, &lm, &state, &processor);
@@ -921,7 +958,7 @@ pub fn main() !void {
     defer allocator.free(agent_status);
     const agent_config_get = try methods.agentConfigGet();
     defer allocator.free(agent_config_get);
-    const submit_blob = try makeMinimalSubmitBlob(allocator, .payment, account, types.MIN_TX_FEE, 7);
+    const submit_blob = try makeMinimalSubmitBlob(allocator, .payment, account, types.MIN_TX_FEE, 7, destination, 1 * types.XRP);
     defer allocator.free(submit_blob);
     const submit = try methods.submit(submit_blob);
     defer allocator.free(submit);

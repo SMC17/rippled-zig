@@ -11,8 +11,10 @@
     "submit": {
       "required_fields": ["result"],
       "required_result_fields": ["engine_result", "engine_result_code", "status", "validated", "tx_json"],
+      "required_tx_json_fields": ["TransactionType", "Fee", "Sequence", "Destination", "Amount"],
       "expected_status": "success",
-      "expected_engine_result": "tesSUCCESS"
+      "expected_engine_result": "tesSUCCESS",
+      "expected_tx_type": "payment"
     },
     "ping": {
       "required_fields": ["result"]

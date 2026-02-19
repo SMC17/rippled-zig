@@ -166,8 +166,10 @@ jq -e '.methods.account_info.required_account_data_fields == ["Account","Balance
 jq -e '.methods.account_info.expected_status == "success"' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.account_info.expected_validated == true' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.submit.required_result_fields == ["engine_result","engine_result_code","status","validated","tx_json"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.submit.required_tx_json_fields == ["TransactionType","Fee","Sequence","Destination","Amount"]' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.submit.expected_status == "success"' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.submit.expected_engine_result == "tesSUCCESS"' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.submit.expected_tx_type == "payment"' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.ping.required_fields == ["result"]' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.ledger_current.required_result_fields == ["ledger_current_index"]' test_data/rpc_live_methods_schema.json > /dev/null
 

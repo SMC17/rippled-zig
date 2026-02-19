@@ -447,6 +447,9 @@ pub const RpcServer = struct {
                 error.InvalidTxBlob => return self.buildRpcErrorResponse("Invalid submit tx_blob"),
                 error.UnsupportedTransactionType => return self.buildRpcErrorResponse("Unsupported submit transaction type"),
                 error.AccountNotFound => return self.buildRpcErrorResponse("Submit account not found"),
+                error.DestinationAccountNotFound => return self.buildRpcErrorResponse("Submit destination account not found"),
+                error.InvalidPaymentAmount => return self.buildRpcErrorResponse("Invalid submit payment amount"),
+                error.InsufficientPaymentBalance => return self.buildRpcErrorResponse("Insufficient submit payment balance"),
                 else => return err,
             };
             defer self.allocator.free(payload);
@@ -693,9 +696,19 @@ test "json-rpc live method coverage for account_info submit ping ledger_current"
     defer processor.deinit();
 
     const account = [_]u8{1} ** 20;
+    const destination = [_]u8{2} ** 20;
     try state.putAccount(.{
         .account = account,
         .balance = 500 * 1_000_000,
+        .flags = .{},
+        .owner_count = 0,
+        .previous_txn_id = [_]u8{0} ** 32,
+        .previous_txn_lgr_seq = 1,
+        .sequence = 1,
+    });
+    try state.putAccount(.{
+        .account = destination,
+        .balance = 10 * 1_000_000,
         .flags = .{},
         .owner_count = 0,
         .previous_txn_id = [_]u8{0} ** 32,
@@ -719,13 +732,16 @@ test "json-rpc live method coverage for account_info submit ping ledger_current"
     try std.testing.expect(std.mem.indexOf(u8, account_resp, "\"status\": \"success\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, account_resp, "\"account_data\"") != null);
 
-    // Minimal tx blob format:
-    // tx_type=payment(0), account=0x01*20, fee=10, sequence=1
+    // Minimal tx blob format for payment:
+    // tx_type=payment(0), account=0x01*20, fee=10, sequence=1,
+    // destination=0x02*20, amount=1000000 (1 XRP)
     const tx_blob =
         "0000" ++
         "0101010101010101010101010101010101010101" ++
         "000000000000000a" ++
-        "00000001";
+        "00000001" ++
+        "0202020202020202020202020202020202020202" ++
+        "00000000000f4240";
     const submit_req = try std.fmt.allocPrint(
         allocator,
         "{{\"method\":\"submit\",\"params\":{{\"tx_blob\":\"{s}\"}}}}",
