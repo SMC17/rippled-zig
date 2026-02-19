@@ -8,6 +8,7 @@ Status: Active issue map for turning the current codebase into an agent-native p
 3. Read `docs/status/ARCHITECTURE_SOT.md` for module maturity/ownership/risk.
 4. Read `docs/status/AGENT_NATIVE_BACKLOG.md` for prioritized technical backlog.
 5. Read `docs/CONTROL_PLANE_POLICY.md` and `docs/RPC_CONTRACT_INDEX.md` for live contracts and policy boundaries.
+6. Read `docs/GITHUB_PROJECTS_SETUP.md` for project board setup and automation.
 
 ## Issue Hierarchy
 - Vision Epic: defines target end-state and success criteria.
@@ -47,6 +48,11 @@ Status: Active issue map for turning the current codebase into an agent-native p
 - Starter tasks: label `good first issue`
 - Advanced tasks: label `expert-only`
 - Gate-sensitive work: labels `gate:c`, `gate:d`, `gate:e`, `gate:sim`
+
+## Project Board
+- Bootstrap script: `scripts/github/setup_project_board.sh`
+- Automation workflow: `.github/workflows/project-intake.yml`
+- Target lanes: `Now`, `Next`, `Blocked`, `good-first`
 
 ## Governance Rules
 1. Every issue must link to at least one gate (`A`/`B`/`C`/`D`/`E`/`sim`) or explicit rationale if pre-gate.

@@ -17,10 +17,12 @@ rippled-zig is an implementation of the XRP Ledger protocol in Zig, created for 
 
 ## Source Of Truth
 
-- Canonical status and release decision: `PROJECT_STATUS.md`
-- CI quality gates: `.github/workflows/quality-gates.yml`
-- Gate scripts: `scripts/gates/`
-- GitHub execution issue map: `docs/GITHUB_EXECUTION_TRACK.md` (vision epic `#4` + track epics `#5`-`#12`)
+- **Canonical status**: `PROJECT_STATUS.md` (release decision, gates, evidence)
+- **Architecture and backlog**: `docs/status/ARCHITECTURE_SOT.md`, `docs/status/AGENT_NATIVE_BACKLOG.md`
+- **Control plane**: `docs/CONTROL_PLANE_POLICY.md`
+- **Full index**: `docs/SOURCE_OF_TRUTH.md`
+- **CI/gates**: `.github/workflows/quality-gates.yml`, `scripts/gates/`
+- **Execution board**: `docs/GITHUB_EXECUTION_TRACK.md`, `docs/GITHUB_PROJECTS_SETUP.md`
 
 All maturity/parity claims are considered untrusted unless backed by reproducible gate evidence in `PROJECT_STATUS.md`.
 

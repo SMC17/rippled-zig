@@ -1,0 +1,93 @@
+name: Project Intake
+
+on:
+  issues:
+    types: [opened, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip when project automation is not configured
+        id: cfg
+        env:
+          PROJECT_URL: ${{ vars.EXECUTION_PROJECT_URL }}
+          PROJECT_TOKEN: ${{ secrets.PROJECTS_TOKEN }}
+        run: |
+          if [ -z "$PROJECT_URL" ] || [ -z "$PROJECT_TOKEN" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Project intake skipped: missing EXECUTION_PROJECT_URL var or PROJECTS_TOKEN secret"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure gh auth token
+        if: steps.cfg.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PROJECTS_TOKEN }}
+        run: gh auth status
+
+      - name: Add issue to execution project and route lane/track
+        if: steps.cfg.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PROJECTS_TOKEN }}
+          PROJECT_URL: ${{ vars.EXECUTION_PROJECT_URL }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_LABELS_JSON: ${{ toJson(github.event.issue.labels) }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+
+          project_number="$(echo "$PROJECT_URL" | sed -E 's#.*/projects/([0-9]+).*#\1#')"
+          if ! [[ "$project_number" =~ ^[0-9]+$ ]]; then
+            echo "Failed to parse project number from EXECUTION_PROJECT_URL=$PROJECT_URL" >&2
+            exit 1
+          fi
+
+          gh project item-add "$project_number" --owner "$REPO_OWNER" --url "$ISSUE_URL" >/dev/null || true
+
+          project_id="$(gh project view "$project_number" --owner "$REPO_OWNER" --format json --jq .id)"
+          lane_field_id="$(gh project field-list "$project_number" --owner "$REPO_OWNER" --format json --jq '.fields[] | select(.name=="Lane") | .id')"
+          track_field_id="$(gh project field-list "$project_number" --owner "$REPO_OWNER" --format json --jq '.fields[] | select(.name=="Track") | .id')"
+
+          lane_now_opt="$(gh project field-list "$project_number" --owner "$REPO_OWNER" --format json --jq '.fields[] | select(.name=="Lane") | .options[] | select(.name=="Now") | .id')"
+          lane_next_opt="$(gh project field-list "$project_number" --owner "$REPO_OWNER" --format json --jq '.fields[] | select(.name=="Lane") | .options[] | select(.name=="Next") | .id')"
+          lane_blocked_opt="$(gh project field-list "$project_number" --owner "$REPO_OWNER" --format json --jq '.fields[] | select(.name=="Lane") | .options[] | select(.name=="Blocked") | .id')"
+          lane_gfi_opt="$(gh project field-list "$project_number" --owner "$REPO_OWNER" --format json --jq '.fields[] | select(.name=="Lane") | .options[] | select(.name=="good-first") | .id')"
+
+          item_id="$(gh project item-list "$project_number" --owner "$REPO_OWNER" --limit 500 --format json --jq ".items[] | select(.content.number == $ISSUE_NUMBER) | .id" | head -n1)"
+          if [ -z "$item_id" ] || [ "$item_id" = "null" ]; then
+            echo "No project item found for issue #$ISSUE_NUMBER" >&2
+            exit 1
+          fi
+
+          lane_opt="$lane_next_opt"
+          if echo "$ISSUE_LABELS_JSON" | jq -e '.[] | select(.name == "blocked")' >/dev/null; then
+            lane_opt="$lane_blocked_opt"
+          elif echo "$ISSUE_LABELS_JSON" | jq -e '.[] | select(.name == "good first issue")' >/dev/null; then
+            lane_opt="$lane_gfi_opt"
+          elif echo "$ISSUE_LABELS_JSON" | jq -e '.[] | select(.name == "priority:p0")' >/dev/null; then
+            lane_opt="$lane_now_opt"
+          fi
+
+          gh project item-edit --id "$item_id" --project-id "$project_id" --field-id "$lane_field_id" --single-select-option-id "$lane_opt" >/dev/null || true
+
+          track=""
+          for t in control-plane rpc submit gate-d simulation wasm security research; do
+            if echo "$ISSUE_LABELS_JSON" | jq -e ".[] | select(.name == \"track:$t\")" >/dev/null; then
+              track="$t"
+              break
+            fi
+          done
+
+          if [ -n "$track" ] && [ -n "$track_field_id" ] && [ "$track_field_id" != "null" ]; then
+            track_opt_id="$(gh project field-list "$project_number" --owner "$REPO_OWNER" --format json --jq ".fields[] | select(.name==\"Track\") | .options[] | select(.name==\"$track\") | .id")"
+            if [ -n "$track_opt_id" ] && [ "$track_opt_id" != "null" ]; then
+              gh project item-edit --id "$item_id" --project-id "$project_id" --field-id "$track_field_id" --single-select-option-id "$track_opt_id" >/dev/null || true
+            fi
+          fi
