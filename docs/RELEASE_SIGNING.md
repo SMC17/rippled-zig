@@ -1,5 +1,7 @@
 # Signed Releases with Cosign
 
+Policy companion: `docs/RELEASE_SIGNING_POLICY.md` (authoritative release-promotion requirements).
+
 rippled-zig release artifacts can be signed with **cosign** (Sigstore) when configured.
 
 ## How It Works

@@ -33,6 +33,7 @@ Scope: `main`
 - Required for `GO`:
   - Gate A/B/C/E are green on latest commit.
   - Gate D is either green (with secrets configured) or explicitly `skipped` with artifact reason.
+  - Signed release artifact policy is satisfied for production-oriented tags (`SHA256SUMS.sig` + verifier path).
   - No unresolved `HIGH` severity risks in the risk register.
   - `PROJECT_STATUS.md` evidence table updated with run links/commit SHAs.
 - Current Blockers:
@@ -47,6 +48,7 @@ Scope: `main`
 | C-003 | Gate D supports strict live conformance and explicit skip artifact mode | Gate D | gate script + artifacts | `scripts/gates/gate_d.sh`, quality-gates artifacts | working tree | 2026-02-18 | pending | PASS |
 | C-004 | Gate E enforces security checks plus fuzz budget/runtime thresholds | Gate E | gate script + checker | `scripts/gates/gate_e.sh`, `src/security_check.zig` | working tree | 2026-02-18 | pending | PASS |
 | C-005 | Branch protection required-check baseline is documented for `main` | Repo Policy | branch protection runbook | `.github/BRANCH_PROTECTION_BASELINE.md` | working tree | 2026-02-18 | pending | PASS |
+| C-006 | Signed release artifact policy and verifier runbook are documented | Release Security | policy + runbook + workflow | `docs/RELEASE_SIGNING_POLICY.md`, `docs/RELEASE_SIGNING.md`, `.github/workflows/ci.yml` | working tree | 2026-02-20 | pending | PASS |
 
 ## Gate Definitions
 ### Gate A: Build + Unit/Integration
