@@ -161,6 +161,15 @@ jq -e '.expected_values.allow_unl_updates == false' test_data/agent_config_schem
 
 # Deterministic offline schema fixture checks for newly live JSON-RPC methods.
 jq -e '.schema_version == 1' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.server_info.required_fields == ["result"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.server_info.required_result_fields == ["info","status"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.server_info.required_info_fields == ["build_version","complete_ledgers","server_state","validated_ledger"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.server_info.required_validated_ledger_fields == ["seq","hash"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.server_info.expected_status == "success"' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.fee.required_fields == ["result"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.fee.required_result_fields == ["drops","ledger_current_index","status"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.fee.required_drops_fields == ["base_fee","minimum_fee","median_fee","open_ledger_fee"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.fee.expected_status == "success"' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.account_info.required_result_fields == ["account_data","ledger_current_index","status","validated"]' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.account_info.required_account_data_fields == ["Account","Balance","Flags","OwnerCount","Sequence"]' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.account_info.expected_status == "success"' test_data/rpc_live_methods_schema.json > /dev/null
