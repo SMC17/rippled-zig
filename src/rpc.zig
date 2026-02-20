@@ -447,6 +447,9 @@ pub const RpcServer = struct {
                 error.InvalidTxBlob => return self.buildRpcErrorResponse("Invalid submit tx_blob"),
                 error.UnsupportedTransactionType => return self.buildRpcErrorResponse("Unsupported submit transaction type"),
                 error.AccountNotFound => return self.buildRpcErrorResponse("Submit account not found"),
+                error.SubmitFeeTooLow => return self.buildRpcErrorResponse("Submit fee below minimum"),
+                error.SubmitSequenceMismatch => return self.buildRpcErrorResponse("Submit sequence mismatch"),
+                error.SubmitInsufficientFeeBalance => return self.buildRpcErrorResponse("Submit fee balance insufficient"),
                 error.DestinationAccountNotFound => return self.buildRpcErrorResponse("Submit destination account not found"),
                 error.InvalidPaymentAmount => return self.buildRpcErrorResponse("Invalid submit payment amount"),
                 error.InsufficientPaymentBalance => return self.buildRpcErrorResponse("Insufficient submit payment balance"),
@@ -932,4 +935,69 @@ test "submit payment errors are deterministic" {
     const insufficient_resp = try server.handleJsonRpc(insufficient_req);
     defer allocator.free(insufficient_resp);
     try std.testing.expect(std.mem.indexOf(u8, insufficient_resp, "Insufficient submit payment balance") != null);
+}
+
+test "submit sequence and fee boundary errors are deterministic and mutation-safe" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    const sender = [_]u8{1} ** 20;
+    const destination = [_]u8{2} ** 20;
+    try state.putAccount(.{
+        .account = sender,
+        .balance = 50 * 1_000_000,
+        .flags = .{},
+        .owner_count = 0,
+        .previous_txn_id = [_]u8{0} ** 32,
+        .previous_txn_lgr_seq = 1,
+        .sequence = 7,
+    });
+    try state.putAccount(.{
+        .account = destination,
+        .balance = 4 * 1_000_000,
+        .flags = .{},
+        .owner_count = 0,
+        .previous_txn_id = [_]u8{0} ** 32,
+        .previous_txn_lgr_seq = 1,
+        .sequence = 1,
+    });
+
+    const before_sender = state.getAccount(sender).?;
+    const before_destination = state.getAccount(destination).?;
+
+    var server = RpcServer.init(allocator, 5005, &lm, &state, &processor);
+    defer server.deinit();
+
+    // Sequence mismatch (account seq is 7, request uses 8).
+    const seq_req =
+        "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"00000101010101010101010101010101010101010101000000000000000A00000008020202020202020202020202020202020202020200000000000F4240\"}}";
+    const seq_resp = try server.handleJsonRpc(seq_req);
+    defer allocator.free(seq_resp);
+    try std.testing.expect(std.mem.indexOf(u8, seq_resp, "Submit sequence mismatch") != null);
+
+    var after_sender = state.getAccount(sender).?;
+    var after_destination = state.getAccount(destination).?;
+    try std.testing.expectEqual(before_sender.sequence, after_sender.sequence);
+    try std.testing.expectEqual(before_sender.balance, after_sender.balance);
+    try std.testing.expectEqual(before_destination.balance, after_destination.balance);
+    try std.testing.expectEqual(@as(usize, 0), processor.getPendingTransactions().len);
+
+    // Fee below minimum (9 drops).
+    const fee_req =
+        "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"00000101010101010101010101010101010101010101000000000000000900000007020202020202020202020202020202020202020200000000000F4240\"}}";
+    const fee_resp = try server.handleJsonRpc(fee_req);
+    defer allocator.free(fee_resp);
+    try std.testing.expect(std.mem.indexOf(u8, fee_resp, "Submit fee below minimum") != null);
+
+    after_sender = state.getAccount(sender).?;
+    after_destination = state.getAccount(destination).?;
+    try std.testing.expectEqual(before_sender.sequence, after_sender.sequence);
+    try std.testing.expectEqual(before_sender.balance, after_sender.balance);
+    try std.testing.expectEqual(before_destination.balance, after_destination.balance);
+    try std.testing.expectEqual(@as(usize, 0), processor.getPendingTransactions().len);
 }

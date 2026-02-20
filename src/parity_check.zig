@@ -422,6 +422,8 @@ fn assertRpcLiveNegativeContracts(server: *rpc.RpcServer, schema_payload: []cons
         "submit_account_set_wrong_length",
         "submit_missing_destination_account",
         "submit_insufficient_payment_balance",
+        "submit_sequence_mismatch",
+        "submit_fee_below_minimum",
     };
 
     for (research_cases) |case_name| {

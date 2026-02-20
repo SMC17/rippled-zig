@@ -27,8 +27,11 @@ From `test_data/rpc_live_negative_schema.json`:
 - `submit_empty_blob`
 - `submit_non_hex_blob`
 - `submit_invalid_blob_structure`
+- `submit_unsupported_tx_type`
 - `submit_missing_destination_account`
 - `submit_insufficient_payment_balance`
+- `submit_sequence_mismatch`
+- `submit_fee_below_minimum`
 - `submit_blocked_in_production`
 
 ## Contract Governance Rules

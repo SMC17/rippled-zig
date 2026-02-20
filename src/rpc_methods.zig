@@ -294,26 +294,14 @@ pub const RpcMethods = struct {
         const validation = try self.tx_processor.validateTransaction(&tx, self.account_state);
 
         if (validation != .tes_success) {
-            const engine = switch (validation) {
-                .tel_local_error => "telLOCAL_ERROR",
-                .tem_malformed => "temMALFORMED",
-                .ter_retry => "terRETRY",
-                .tec_claim => "tecCLAIM",
-                .tef_failure => "tefFAILURE",
-                .tes_success, .success => "tesSUCCESS",
-            };
-
-            return try std.fmt.allocPrint(self.allocator,
-                \\{{
-                \\  "result": {{
-                \\    "engine_result": "{s}",
-                \\    "engine_result_code": -1,
-                \\    "engine_result_message": "Transaction failed validation.",
-                \\    "status": "error",
-                \\    "validated": false
-                \\  }}
-                \\}}
-            , .{engine});
+            switch (validation) {
+                .tem_malformed => return error.SubmitFeeTooLow,
+                .ter_retry => return error.SubmitSequenceMismatch,
+                .tel_local_error => return error.AccountNotFound,
+                .tec_claim => return error.SubmitInsufficientFeeBalance,
+                .tef_failure => return error.SubmitValidationFailed,
+                .tes_success, .success => {},
+            }
         }
 
         // Minimal local apply path:
@@ -849,10 +837,69 @@ test "submit minimal path returns validation error on bad sequence" {
     const blob = try makeMinimalSubmitBlob(allocator, .payment, account, types.MIN_TX_FEE, 9, destination, 100);
     defer allocator.free(blob);
 
-    const res = try methods.submit(blob);
-    defer allocator.free(res);
-    try std.testing.expect(std.mem.indexOf(u8, res, "\"status\": \"error\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, res, "\"engine_result\": \"terRETRY\"") != null);
+    try std.testing.expectError(error.SubmitSequenceMismatch, methods.submit(blob));
+    try std.testing.expectEqual(@as(usize, 0), processor.getPendingTransactions().len);
+}
+
+test "submit validation failures keep account state unchanged" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    const account = [_]u8{4} ** 20;
+    const destination = [_]u8{5} ** 20;
+    try state.putAccount(.{
+        .account = account,
+        .balance = 100 * types.XRP,
+        .flags = .{},
+        .owner_count = 0,
+        .previous_txn_id = [_]u8{0} ** 32,
+        .previous_txn_lgr_seq = 1,
+        .sequence = 7,
+    });
+    try state.putAccount(.{
+        .account = destination,
+        .balance = 3 * types.XRP,
+        .flags = .{},
+        .owner_count = 0,
+        .previous_txn_id = [_]u8{0} ** 32,
+        .previous_txn_lgr_seq = 1,
+        .sequence = 1,
+    });
+
+    var methods = RpcMethods.init(allocator, &lm, &state, &processor);
+
+    const before_sender = state.getAccount(account).?;
+    const before_destination = state.getAccount(destination).?;
+
+    // Sequence mismatch: tx sequence is 8, account sequence is 7.
+    const seq_blob = try makeMinimalSubmitBlob(allocator, .payment, account, types.MIN_TX_FEE, 8, destination, 1 * types.XRP);
+    defer allocator.free(seq_blob);
+    try std.testing.expectError(error.SubmitSequenceMismatch, methods.submit(seq_blob));
+
+    const after_seq_sender = state.getAccount(account).?;
+    const after_seq_destination = state.getAccount(destination).?;
+    try std.testing.expectEqual(before_sender.sequence, after_seq_sender.sequence);
+    try std.testing.expectEqual(before_sender.balance, after_seq_sender.balance);
+    try std.testing.expectEqual(before_destination.balance, after_seq_destination.balance);
+    try std.testing.expectEqual(@as(usize, 0), processor.getPendingTransactions().len);
+
+    // Fee below minimum (types.MIN_TX_FEE - 1) must not mutate account state.
+    const low_fee_blob = try makeMinimalSubmitBlob(allocator, .payment, account, types.MIN_TX_FEE - 1, 7, destination, 1 * types.XRP);
+    defer allocator.free(low_fee_blob);
+    try std.testing.expectError(error.SubmitFeeTooLow, methods.submit(low_fee_blob));
+
+    const after_fee_sender = state.getAccount(account).?;
+    const after_fee_destination = state.getAccount(destination).?;
+    try std.testing.expectEqual(before_sender.sequence, after_fee_sender.sequence);
+    try std.testing.expectEqual(before_sender.balance, after_fee_sender.balance);
+    try std.testing.expectEqual(before_destination.balance, after_fee_destination.balance);
     try std.testing.expectEqual(@as(usize, 0), processor.getPendingTransactions().len);
 }
 
@@ -885,4 +932,52 @@ test "agent control profile production policy is enforced" {
     try std.testing.expectError(error.PolicyViolation, methods.agentConfigSet("allow_unl_updates", "true"));
     try std.testing.expectError(error.PolicyViolation, methods.agentConfigSet("strict_crypto_required", "false"));
     try std.testing.expectError(error.PolicyViolation, methods.agentConfigSet("fee_multiplier", "99"));
+}
+
+test "agent control profile transition invariants matrix" {
+    const allocator = std.testing.allocator;
+
+    const Phase = enum { entering_production, mutating_in_production };
+    const Case = struct {
+        phase: Phase,
+        key: []const u8,
+        value: []const u8,
+    };
+
+    const cases = [_]Case{
+        .{ .phase = .entering_production, .key = "strict_crypto_required", .value = "false" },
+        .{ .phase = .entering_production, .key = "allow_unl_updates", .value = "true" },
+        .{ .phase = .entering_production, .key = "fee_multiplier", .value = "6" },
+        .{ .phase = .entering_production, .key = "max_peers", .value = "101" },
+        .{ .phase = .mutating_in_production, .key = "strict_crypto_required", .value = "false" },
+        .{ .phase = .mutating_in_production, .key = "allow_unl_updates", .value = "true" },
+        .{ .phase = .mutating_in_production, .key = "fee_multiplier", .value = "6" },
+        .{ .phase = .mutating_in_production, .key = "max_peers", .value = "101" },
+    };
+
+    inline for (cases) |case| {
+        var lm = try ledger.LedgerManager.init(allocator);
+        defer lm.deinit();
+
+        var state = ledger.AccountState.init(allocator);
+        defer state.deinit();
+
+        var processor = try transaction.TransactionProcessor.init(allocator);
+        defer processor.deinit();
+
+        var methods = RpcMethods.init(allocator, &lm, &state, &processor);
+
+        switch (case.phase) {
+            .entering_production => {
+                const set_mutation = try methods.agentConfigSet(case.key, case.value);
+                defer allocator.free(set_mutation);
+                try std.testing.expectError(error.UnsafeProfileTransition, methods.agentConfigSet("profile", "production"));
+            },
+            .mutating_in_production => {
+                const set_prod = try methods.agentConfigSet("profile", "production");
+                defer allocator.free(set_prod);
+                try std.testing.expectError(error.PolicyViolation, methods.agentConfigSet(case.key, case.value));
+            },
+        }
+    }
 }

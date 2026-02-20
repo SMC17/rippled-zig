@@ -191,9 +191,11 @@ jq -e '.cases.submit_empty_blob.expected_error == "Invalid submit params"' test_
 jq -e '.cases.submit_non_hex_blob.expected_error == "Invalid submit params"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.submit_invalid_blob_structure.expected_error == "Invalid submit tx_blob"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.submit_unsupported_tx_type.expected_error == "Unsupported submit transaction type"' test_data/rpc_live_negative_schema.json > /dev/null
-  jq -e '.cases.submit_account_set_wrong_length.expected_error == "Invalid submit tx_blob"' test_data/rpc_live_negative_schema.json > /dev/null
+jq -e '.cases.submit_account_set_wrong_length.expected_error == "Invalid submit tx_blob"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.submit_missing_destination_account.expected_error == "Submit destination account not found"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.submit_insufficient_payment_balance.expected_error == "Insufficient submit payment balance"' test_data/rpc_live_negative_schema.json > /dev/null
+jq -e '.cases.submit_sequence_mismatch.expected_error == "Submit sequence mismatch"' test_data/rpc_live_negative_schema.json > /dev/null
+jq -e '.cases.submit_fee_below_minimum.expected_error == "Submit fee below minimum"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.submit_blocked_in_production.expected_error == "Method blocked by profile policy"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.agent_config_set_blocked_in_production.expected_error == "Method blocked by profile policy"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.random_blocked_in_production.expected_error == "Method blocked by profile policy"' test_data/rpc_live_negative_schema.json > /dev/null
