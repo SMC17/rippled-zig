@@ -18,13 +18,13 @@ pub const MerkleTree = struct {
     }
 
     pub fn deinit(self: *MerkleTree) void {
-        self.leaves.deinit();
+        self.leaves.deinit(self.allocator);
     }
 
     /// Add a leaf to the tree
     pub fn addLeaf(self: *MerkleTree, data: []const u8) !void {
         const leaf_hash = crypto.Hash.sha512Half(data);
-        try self.leaves.append(leaf_hash);
+        try self.leaves.append(self.allocator, leaf_hash);
     }
 
     /// Calculate merkle root
@@ -39,10 +39,10 @@ pub const MerkleTree = struct {
 
         // Build tree bottom-up
         var current_level = std.ArrayList([32]u8).initCapacity(self.allocator, self.leaves.items.len) catch return [_]u8{0} ** 32;
-        defer current_level.deinit();
+        defer current_level.deinit(self.allocator);
 
         // Copy leaves to current level
-        current_level.appendSlice(self.leaves.items) catch return [_]u8{0} ** 32;
+        current_level.appendSlice(self.allocator, self.leaves.items) catch return [_]u8{0} ** 32;
 
         // Build up the tree
         while (current_level.items.len > 1) {
@@ -56,23 +56,22 @@ pub const MerkleTree = struct {
                     @memcpy(combined[0..32], &current_level.items[i]);
                     @memcpy(combined[32..64], &current_level.items[i + 1]);
                     const parent_hash = crypto.Hash.sha512Half(&combined);
-                    next_level.append(parent_hash) catch break;
+                    next_level.append(self.allocator, parent_hash) catch break;
                 } else {
                     // Odd node - duplicate it
                     var combined: [64]u8 = undefined;
                     @memcpy(combined[0..32], &current_level.items[i]);
                     @memcpy(combined[32..64], &current_level.items[i]);
                     const parent_hash = crypto.Hash.sha512Half(&combined);
-                    next_level.append(parent_hash) catch break;
+                    next_level.append(self.allocator, parent_hash) catch break;
                 }
             }
 
-            current_level.deinit();
+            current_level.deinit(self.allocator);
             current_level = next_level;
         }
 
         const root = if (current_level.items.len > 0) current_level.items[0] else [_]u8{0} ** 32;
-        current_level.deinit();
         return root;
     }
 
@@ -81,7 +80,7 @@ pub const MerkleTree = struct {
         if (index >= self.leaves.items.len) return error.IndexOutOfBounds;
 
         var proof = try std.ArrayList([32]u8).initCapacity(self.allocator, 0);
-        errdefer proof.deinit();
+        errdefer proof.deinit(self.allocator);
 
         // TODO: Implement full merkle proof generation
         // For now, return empty proof
@@ -147,11 +146,11 @@ pub const StateTree = struct {
 
         // Collect all hashes and sort
         var hashes = std.ArrayList([32]u8).initCapacity(self.allocator, self.nodes.count()) catch return [_]u8{0} ** 32;
-        defer hashes.deinit();
+        defer hashes.deinit(self.allocator);
 
         var it = self.nodes.keyIterator();
         while (it.next()) |key| {
-            hashes.append(key.*) catch continue;
+            hashes.append(self.allocator, key.*) catch continue;
         }
 
         // Sort hashes for canonical ordering
@@ -163,10 +162,10 @@ pub const StateTree = struct {
 
         // Hash all together
         var combined = std.ArrayList(u8).initCapacity(self.allocator, hashes.items.len * 32) catch return [_]u8{0} ** 32;
-        defer combined.deinit();
+        defer combined.deinit(self.allocator);
 
         for (hashes.items) |hash| {
-            combined.appendSlice(&hash) catch continue;
+            combined.appendSlice(self.allocator, &hash) catch continue;
         }
 
         return crypto.Hash.sha512Half(combined.items);

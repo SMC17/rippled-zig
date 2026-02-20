@@ -78,7 +78,7 @@ pub const LedgerManager = struct {
     pub fn init(allocator: std.mem.Allocator) !LedgerManager {
         var history = try std.ArrayList(Ledger).initCapacity(allocator, 100);
         const genesis = Ledger.genesis();
-        try history.append(genesis);
+        try history.append(allocator, genesis);
 
         return LedgerManager{
             .allocator = allocator,
@@ -88,7 +88,7 @@ pub const LedgerManager = struct {
     }
 
     pub fn deinit(self: *LedgerManager) void {
-        self.ledger_history.deinit();
+        self.ledger_history.deinit(self.allocator);
     }
 
     /// Get the current validated ledger
@@ -147,7 +147,7 @@ pub const LedgerManager = struct {
 
         new_ledger.hash = new_ledger.calculateHash();
 
-        try self.ledger_history.append(new_ledger);
+        try self.ledger_history.append(self.allocator, new_ledger);
         self.current_ledger = new_ledger;
 
         std.debug.print("Ledger closed: seq={d}, hash={any}\n", .{
@@ -162,7 +162,7 @@ pub const LedgerManager = struct {
     pub fn appendLedger(self: *LedgerManager, new_ledger: Ledger) !void {
         if (new_ledger.sequence != self.current_ledger.sequence + 1) return error.SequenceGap;
         if (!std.mem.eql(u8, &new_ledger.parent_hash, &self.current_ledger.hash)) return error.ParentHashMismatch;
-        try self.ledger_history.append(new_ledger);
+        try self.ledger_history.append(self.allocator, new_ledger);
         self.current_ledger = new_ledger;
     }
 

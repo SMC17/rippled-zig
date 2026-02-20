@@ -60,8 +60,8 @@ pub const ConsensusEngine = struct {
     }
 
     pub fn deinit(self: *ConsensusEngine) void {
-        self.unl.deinit();
-        self.proposals.deinit();
+        self.unl.deinit(self.allocator);
+        self.proposals.deinit(self.allocator);
         if (self.our_position) |*pos| {
             pos.deinit(self.allocator);
         }
@@ -69,7 +69,7 @@ pub const ConsensusEngine = struct {
 
     /// Add a validator to the UNL (Unique Node List)
     pub fn addValidator(self: *ConsensusEngine, validator: ValidatorInfo) !void {
-        try self.unl.append(validator);
+        try self.unl.append(self.allocator, validator);
     }
 
     /// Start a new consensus round
@@ -115,7 +115,7 @@ pub const ConsensusEngine = struct {
         }
 
         // Store proposal
-        try self.proposals.append(proposal);
+        try self.proposals.append(self.allocator, proposal);
 
         std.debug.print("Received proposal from validator {any}\n", .{proposal.validator_id[0..8]});
     }

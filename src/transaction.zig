@@ -16,7 +16,7 @@ pub const TransactionProcessor = struct {
     }
 
     pub fn deinit(self: *TransactionProcessor) void {
-        self.pending_transactions.deinit();
+        self.pending_transactions.deinit(self.allocator);
     }
 
     /// Validate a transaction
@@ -61,7 +61,7 @@ pub const TransactionProcessor = struct {
 
     /// Submit a transaction to the pending queue
     pub fn submitTransaction(self: *TransactionProcessor, tx: types.Transaction) !void {
-        try self.pending_transactions.append(tx);
+        try self.pending_transactions.append(self.allocator, tx);
         std.debug.print("Transaction submitted: type={s}, fee={d}\n", .{
             @tagName(tx.tx_type),
             tx.fee,
