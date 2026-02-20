@@ -61,7 +61,7 @@ pub const TransactionProcessor = struct {
 
     /// Submit a transaction to the pending queue
     pub fn submitTransaction(self: *TransactionProcessor, tx: types.Transaction) !void {
-        try self.pending_transactions.append(self.allocator, tx);
+        try self.pending_transactions.append(tx);
         std.debug.print("Transaction submitted: type={s}, fee={d}\n", .{
             @tagName(tx.tx_type),
             tx.fee,

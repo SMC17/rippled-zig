@@ -147,7 +147,7 @@ pub const LedgerManager = struct {
 
         new_ledger.hash = new_ledger.calculateHash();
 
-        try self.ledger_history.append(self.allocator, new_ledger);
+        try self.ledger_history.append(new_ledger);
         self.current_ledger = new_ledger;
 
         std.debug.print("Ledger closed: seq={d}, hash={any}\n", .{
@@ -162,7 +162,7 @@ pub const LedgerManager = struct {
     pub fn appendLedger(self: *LedgerManager, new_ledger: Ledger) !void {
         if (new_ledger.sequence != self.current_ledger.sequence + 1) return error.SequenceGap;
         if (!std.mem.eql(u8, &new_ledger.parent_hash, &self.current_ledger.hash)) return error.ParentHashMismatch;
-        try self.ledger_history.append(self.allocator, new_ledger);
+        try self.ledger_history.append(new_ledger);
         self.current_ledger = new_ledger;
     }
 

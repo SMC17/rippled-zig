@@ -69,7 +69,7 @@ pub const ConsensusEngine = struct {
 
     /// Add a validator to the UNL (Unique Node List)
     pub fn addValidator(self: *ConsensusEngine, validator: ValidatorInfo) !void {
-        try self.unl.append(self.allocator, validator);
+        try self.unl.append(validator);
     }
 
     /// Start a new consensus round
@@ -115,7 +115,7 @@ pub const ConsensusEngine = struct {
         }
 
         // Store proposal
-        try self.proposals.append(self.allocator, proposal);
+        try self.proposals.append(proposal);
 
         std.debug.print("Received proposal from validator {any}\n", .{proposal.validator_id[0..8]});
     }

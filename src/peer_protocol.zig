@@ -2,6 +2,7 @@ const std = @import("std");
 const types = @import("types.zig");
 const network = @import("network.zig");
 const crypto = @import("crypto.zig");
+const overlay_https = @import("overlay_https.zig");
 
 /// Complete XRPL Peer Protocol Implementation
 ///
@@ -24,8 +25,8 @@ pub const PeerProtocol = struct {
         };
     }
 
-    /// Perform peer handshake - XRPL handshake protocol
-    pub fn handshake(self: *PeerProtocol, stream: *std.net.Stream) !HandshakeResult {
+    /// Perform peer handshake - XRPL handshake protocol (accepts *PeerStream or *std.net.Stream)
+    pub fn handshake(self: *PeerProtocol, stream: anytype) !HandshakeResult {
         // XRPL peer handshake:
         // 1. Send Hello message with our node ID, network ID, and capabilities
         // 2. Receive Hello from peer
@@ -150,8 +151,8 @@ pub const PeerProtocol = struct {
         };
     }
 
-    /// Request ledger from peer
-    pub fn requestLedger(self: *PeerProtocol, stream: *std.net.Stream, ledger_seq: types.LedgerSequence, ledger_hash: ?types.LedgerHash) !void {
+    /// Request ledger from peer (accepts *PeerStream or *std.net.Stream)
+    pub fn requestLedger(self: *PeerProtocol, stream: anytype, ledger_seq: types.LedgerSequence, ledger_hash: ?types.LedgerHash) !void {
         // XRPL GetLedger message format:
         // [type:1][ledger_seq:4][ledger_hash:32?]
 
@@ -181,8 +182,8 @@ pub const PeerProtocol = struct {
         _ = try stream.write(msg_with_len.items);
     }
 
-    /// Send transaction to peer (for flooding)
-    pub fn sendTransaction(self: *PeerProtocol, stream: *std.net.Stream, tx_data: []const u8) !void {
+    /// Send transaction to peer (for flooding; accepts *PeerStream or *std.net.Stream)
+    pub fn sendTransaction(self: *PeerProtocol, stream: anytype, tx_data: []const u8) !void {
         // Transaction message format: [type:1][tx_data]
 
         var buffer = try std.ArrayList(u8).initCapacity(self.allocator, tx_data.len + 1);
@@ -202,8 +203,8 @@ pub const PeerProtocol = struct {
         _ = try stream.write(msg_with_len.items);
     }
 
-    /// Receive message from peer
-    pub fn receiveMessage(self: *PeerProtocol, stream: *std.net.Stream) !PeerMessage {
+    /// Receive message from peer (accepts *PeerStream or *std.net.Stream)
+    pub fn receiveMessage(self: *PeerProtocol, stream: anytype) !PeerMessage {
         // Read length prefix
         var len_buffer: [4]u8 = undefined;
         const len_bytes = try stream.readAll(&len_buffer);
@@ -279,12 +280,12 @@ pub const PeerMessage = struct {
 /// Peer Connection Manager - handles connection lifecycle
 pub const PeerConnection = struct {
     allocator: std.mem.Allocator,
-    stream: std.net.Stream,
+    stream: overlay_https.PeerStream,
     protocol: PeerProtocol,
     connected: bool,
     last_ping: i64,
 
-    pub fn init(allocator: std.mem.Allocator, stream: std.net.Stream, node_id: [32]u8, network_id: u32) PeerConnection {
+    pub fn init(allocator: std.mem.Allocator, stream: overlay_https.PeerStream, node_id: [32]u8, network_id: u32) PeerConnection {
         return PeerConnection{
             .allocator = allocator,
             .stream = stream,
@@ -317,7 +318,7 @@ pub const PeerConnection = struct {
         std.mem.writeInt(u32, try msg_with_len.addManyAsSlice(4), @intCast(buffer.items.len), .big);
         try msg_with_len.appendSlice(buffer.items);
 
-        _ = try self.stream.write(msg_with_len.items);
+        try self.stream.write(msg_with_len.items);
         self.last_ping = std.time.timestamp();
     }
 
@@ -422,17 +423,23 @@ pub const PeerDiscovery = struct {
 
         const peer_addr = peers[0];
 
-        const stream = blk: {
-            const overlay = @import("overlay_https.zig");
-            break :blk overlay.connectWithUpgrade(self.allocator, peer_addr.hostname, peer_addr.port) catch |err| {
+        const peer_stream = blk: {
+            // Try TLS+upgrade first (real rippled), then plain upgrade (rippled-zig), then raw TCP
+            if (overlay_https.connectWithTlsAndUpgrade(self.allocator, peer_addr.hostname, peer_addr.port)) |tls| {
+                break :blk overlay_https.PeerStream{ .tls = tls };
+            } else |_| {}
+
+            const upgrade = overlay_https.connectWithUpgrade(self.allocator, peer_addr.hostname, peer_addr.port) catch |err| {
                 if (err == error.UpgradeRejected or err == error.ConnectionClosed) {
-                    break :blk std.net.tcpConnectToHost(self.allocator, peer_addr.hostname, peer_addr.port) catch return null;
+                    const raw = std.net.tcpConnectToHost(self.allocator, peer_addr.hostname, peer_addr.port) catch return null;
+                    break :blk overlay_https.PeerStream{ .raw = raw };
                 }
                 return null;
             };
+            break :blk overlay_https.PeerStream{ .raw = upgrade };
         };
 
-        var connection = PeerConnection.init(self.allocator, stream, node_id, network_id);
+        var connection = PeerConnection.init(self.allocator, peer_stream, node_id, network_id);
 
         // Perform handshake
         const handshake_result = connection.connect() catch |err| {

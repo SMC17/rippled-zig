@@ -26,13 +26,13 @@ pub const Base58 = struct {
 
         // Allocate worst-case size
         var result = try std.ArrayList(u8).initCapacity(allocator, data.len * 2);
-        errdefer result.deinit(allocator);
+        errdefer result.deinit();
 
         // Convert to base58
         var num = try std.ArrayList(u8).initCapacity(allocator, data.len);
-        defer num.deinit(allocator);
+        defer num.deinit();
         // Skip leading zeros for conversion math; they are re-added as alphabet[0] prefix.
-        try num.appendSlice(allocator, data[zeros..]);
+        try num.appendSlice(data[zeros..]);
 
         while (num.items.len > 0 and num.items[0] != 0) {
             var carry: u32 = 0;
@@ -42,7 +42,7 @@ pub const Base58 = struct {
                 carry = carry % 58;
             }
 
-            try result.append(allocator, alphabet[carry]);
+            try result.append(alphabet[carry]);
 
             // Remove leading zeros from num
             while (num.items.len > 0 and num.items[0] == 0) {
@@ -52,13 +52,13 @@ pub const Base58 = struct {
 
         // Add leading '1's for leading zero bytes
         for (0..zeros) |_| {
-            try result.append(allocator, alphabet[0]);
+            try result.append(alphabet[0]);
         }
 
         // Reverse the result
         std.mem.reverse(u8, result.items);
 
-        return result.toOwnedSlice(allocator);
+        return result.toOwnedSlice();
     }
 
     /// Decode Base58 string to bytes
@@ -75,7 +75,7 @@ pub const Base58 = struct {
 
         // Decode
         var result = try std.ArrayList(u8).initCapacity(allocator, str.len);
-        errdefer result.deinit(allocator);
+        errdefer result.deinit();
 
         for (str) |char| {
             // Find character in alphabet
@@ -92,20 +92,20 @@ pub const Base58 = struct {
             }
 
             while (carry > 0) {
-                try result.append(allocator, @intCast(carry % 256));
+                try result.append(@intCast(carry % 256));
                 carry /= 256;
             }
         }
 
         // Add leading zeros
         for (0..zeros) |_| {
-            try result.append(allocator, 0);
+            try result.append(0);
         }
 
         // Reverse
         std.mem.reverse(u8, result.items);
 
-        return result.toOwnedSlice(allocator);
+        return result.toOwnedSlice();
     }
 
     /// Encode account ID to XRPL address format
