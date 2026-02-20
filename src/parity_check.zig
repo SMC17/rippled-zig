@@ -442,18 +442,25 @@ fn assertRpcLiveNegativeContracts(server: *rpc.RpcServer, schema_payload: []cons
     defer allocator.free(to_prod);
     if (std.mem.indexOf(u8, to_prod, "\"status\": \"success\"") == null) return error.RpcContractMismatch;
 
-    const blocked_case = switch (cases.get("submit_blocked_in_production") orelse return error.MissingExpectedField) {
-        .object => |obj| obj,
-        else => return error.ExpectedObject,
+    const production_blocked_cases = [_][]const u8{
+        "submit_blocked_in_production",
+        "agent_config_set_blocked_in_production",
+        "random_blocked_in_production",
     };
-    const blocked_request = try getString(blocked_case.get("request") orelse return error.MissingExpectedField);
-    const blocked_expected = try getString(blocked_case.get("expected_error") orelse return error.MissingExpectedField);
-    const blocked_response = try server.handleJsonRpcRequest(blocked_request);
-    defer allocator.free(blocked_response);
+    for (production_blocked_cases) |case_name| {
+        const blocked_case = switch (cases.get(case_name) orelse return error.MissingExpectedField) {
+            .object => |obj| obj,
+            else => return error.ExpectedObject,
+        };
+        const blocked_request = try getString(blocked_case.get("request") orelse return error.MissingExpectedField);
+        const blocked_expected = try getString(blocked_case.get("expected_error") orelse return error.MissingExpectedField);
+        const blocked_response = try server.handleJsonRpcRequest(blocked_request);
+        defer allocator.free(blocked_response);
 
-    const blocked_snippet = try std.fmt.allocPrint(allocator, "\"error\": \"{s}\"", .{blocked_expected});
-    defer allocator.free(blocked_snippet);
-    if (std.mem.indexOf(u8, blocked_response, blocked_snippet) == null) return error.RpcContractMismatch;
+        const blocked_snippet = try std.fmt.allocPrint(allocator, "\"error\": \"{s}\"", .{blocked_expected});
+        defer allocator.free(blocked_snippet);
+        if (std.mem.indexOf(u8, blocked_response, blocked_snippet) == null) return error.RpcContractMismatch;
+    }
 }
 
 fn makeMinimalSubmitBlob(

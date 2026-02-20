@@ -51,6 +51,10 @@ Denied methods include:
 
 Deterministic error:
 - `"Method blocked by profile policy"`
+- Covered deterministic blocked-method fixtures:
+  - `submit_blocked_in_production`
+  - `agent_config_set_blocked_in_production`
+  - `random_blocked_in_production`
 
 ## `agent_config_set` Allowlisted Keys
 - `profile`
@@ -86,7 +90,7 @@ Gate-backed enforcement paths:
 - Gate C fixtures/contracts:
   - `test_data/agent_status_schema.json`
   - `test_data/agent_config_schema.json`
-  - `test_data/rpc_live_negative_schema.json` (`submit_blocked_in_production`)
+  - `test_data/rpc_live_negative_schema.json` (`submit_blocked_in_production`, `agent_config_set_blocked_in_production`, `random_blocked_in_production`)
   - `scripts/gates/gate_c.sh`
 
 ## Operational Guidance
