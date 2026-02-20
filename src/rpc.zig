@@ -866,6 +866,26 @@ test "submit rejects malformed tx_blob structure" {
     try std.testing.expect(std.mem.indexOf(u8, resp, "Invalid submit tx_blob") != null);
 }
 
+test "submit rejects unsupported transaction type deterministically" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    var server = RpcServer.init(allocator, 5005, &lm, &state, &processor);
+    defer server.deinit();
+
+    // tx_type=0xFFFF, account=0x01*20, fee=10, sequence=5
+    const req =
+        "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"FFFF0101010101010101010101010101010101010101000000000000000A00000005\"}}";
+    const resp = try server.handleJsonRpc(req);
+    defer allocator.free(resp);
+    try std.testing.expect(std.mem.indexOf(u8, resp, "Unsupported submit transaction type") != null);
+}
+
 test "submit payment errors are deterministic" {
     const allocator = std.testing.allocator;
     var lm = try ledger.LedgerManager.init(allocator);

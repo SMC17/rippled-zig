@@ -418,6 +418,7 @@ fn assertRpcLiveNegativeContracts(server: *rpc.RpcServer, schema_payload: []cons
         "submit_empty_blob",
         "submit_non_hex_blob",
         "submit_invalid_blob_structure",
+        "submit_unsupported_tx_type",
         "submit_account_set_wrong_length",
         "submit_missing_destination_account",
         "submit_insufficient_payment_balance",
