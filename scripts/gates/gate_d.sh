@@ -93,6 +93,8 @@ post_json() {
 
 post_json '{"method":"server_info"}' "$artifact_dir/server_info.json" "$artifact_dir/server_info.metrics"
 post_json '{"method":"fee"}' "$artifact_dir/fee.json" "$artifact_dir/fee.metrics"
+post_json '{"method":"ping"}' "$artifact_dir/ping.json" "$artifact_dir/ping.metrics"
+post_json '{"method":"ledger_current"}' "$artifact_dir/ledger_current.json" "$artifact_dir/ledger_current.metrics"
 post_json '{"method":"account_info","params":[{"account":"invalid"}]}' "$artifact_dir/account_info_negative.json" "$artifact_dir/account_info_negative.metrics"
 post_json '{"method":"submit","params":[{}]}' "$artifact_dir/submit_negative.json" "$artifact_dir/submit_negative.metrics"
 
@@ -103,6 +105,10 @@ network_id="$(jq -r '.result.info.network_id' "$artifact_dir/server_info.json")"
 server_info_status="$(jq -r '.result.status' "$artifact_dir/server_info.json")"
 base_fee="$(jq -r '.result.drops.base_fee' "$artifact_dir/fee.json")"
 fee_status="$(jq -r '.result.status' "$artifact_dir/fee.json")"
+ping_status="$(jq -r '.result.status // .status // "unknown"' "$artifact_dir/ping.json")"
+ping_role="$(jq -r '.result.role // empty' "$artifact_dir/ping.json")"
+ledger_current_status="$(jq -r '.result.status // .status // "unknown"' "$artifact_dir/ledger_current.json")"
+ledger_current_index="$(jq -r '.result.ledger_current_index // empty' "$artifact_dir/ledger_current.json")"
 account_info_neg_status="$(jq -r '.result.status // .status // "unknown"' "$artifact_dir/account_info_negative.json")"
 account_info_neg_error="$(jq -r '.result.error // .error // empty' "$artifact_dir/account_info_negative.json")"
 submit_neg_status="$(jq -r '.result.status // .status // "unknown"' "$artifact_dir/submit_negative.json")"
@@ -150,6 +156,27 @@ fi
 
 if [[ "$fee_status" != "success" ]]; then
   fail "fee status is not success: $fee_status"
+fi
+if [[ "$ping_status" != "success" ]]; then
+  fail "ping status is not success: $ping_status"
+fi
+if [[ -n "$ping_role" && "$ping_role" != "null" ]]; then
+  case "$ping_role" in
+    admin|user|guest|proxy)
+      ;;
+    *)
+      fail "Unexpected ping role: $ping_role"
+      ;;
+  esac
+fi
+if [[ "$ledger_current_status" != "success" ]]; then
+  fail "ledger_current status is not success: $ledger_current_status"
+fi
+if ! [[ "$ledger_current_index" =~ ^[0-9]+$ ]]; then
+  fail "Non-numeric ledger_current_index: $ledger_current_index"
+fi
+if (( ledger_current_index < validated_seq )); then
+  fail "ledger_current_index behind validated_seq: $ledger_current_index < $validated_seq"
 fi
 
 if (( base_fee < min_base_fee || base_fee > max_base_fee )); then
@@ -199,6 +226,8 @@ fi
 
 server_latency="$(awk '{print $2}' "$artifact_dir/server_info.metrics")"
 fee_latency="$(awk '{print $2}' "$artifact_dir/fee.metrics")"
+ping_latency="$(awk '{print $2}' "$artifact_dir/ping.metrics")"
+ledger_current_latency="$(awk '{print $2}' "$artifact_dir/ledger_current.metrics")"
 ledger_latency="$(awk '{print $2}' "$artifact_dir/ledger.metrics")"
 account_info_negative_latency="$(awk '{print $2}' "$artifact_dir/account_info_negative.metrics")"
 submit_negative_latency="$(awk '{print $2}' "$artifact_dir/submit_negative.metrics")"
@@ -228,7 +257,15 @@ cat > "$artifact_dir/testnet-conformance.json" <<JSON
     "server_state": "$server_state",
     "validated_ledger_seq": $validated_seq,
     "validated_ledger_hash": "$validated_hash",
+    "ledger_current_index": $ledger_current_index,
     "base_fee": $base_fee,
+    "method_status": {
+      "server_info": "$server_info_status",
+      "fee": "$fee_status",
+      "ping": "$ping_status",
+      "ledger_current": "$ledger_current_status",
+      "ledger": "$ledger_status"
+    },
     "negative_contracts": {
       "account_info_status": "$account_info_neg_status",
       "account_info_error": "$account_info_neg_error",
@@ -238,6 +275,8 @@ cat > "$artifact_dir/testnet-conformance.json" <<JSON
     "latency_s": {
       "server_info": $server_latency,
       "fee": $fee_latency,
+      "ping": $ping_latency,
+      "ledger_current": $ledger_current_latency,
       "ledger": $ledger_latency,
       "account_info_negative": $account_info_negative_latency,
       "submit_negative": $submit_negative_latency
@@ -252,10 +291,17 @@ cat > "$artifact_dir/trend-point.json" <<JSON
   "profile": "$run_profile",
   "status": "pass",
   "validated_ledger_seq": $validated_seq,
+  "ledger_current_index": $ledger_current_index,
   "base_fee": $base_fee,
+  "method_status": {
+    "ping": "$ping_status",
+    "ledger_current": "$ledger_current_status"
+  },
   "latency_s": {
     "server_info": $server_latency,
     "fee": $fee_latency,
+    "ping": $ping_latency,
+    "ledger_current": $ledger_current_latency,
     "ledger": $ledger_latency,
     "account_info_negative": $account_info_negative_latency,
     "submit_negative": $submit_negative_latency
