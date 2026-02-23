@@ -17,6 +17,7 @@ docs/planning/
 test_data/*.json
 !test_data/secp_vector_provenance.json
 !test_data/agent_status_schema.json
+!test_data/sim_scenarios_manifest.json
 
 # Database files
 data/

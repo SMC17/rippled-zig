@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "manifest_type": "simulation_scenarios",
+  "scenarios": [
+    {
+      "scenario_id": "standard",
+      "driver": "run_local_cluster",
+      "seed": "xrpl-agent-lab-v1",
+      "node_count": 5,
+      "rounds": 20,
+      "thresholds": {
+        "min_success_rate": 30,
+        "max_avg_latency_ms": 70,
+        "min_latest_ledger_seq": 1000020
+      },
+      "expected_outcomes": {
+        "status": "pass",
+        "deterministic": true
+      }
+    },
+    {
+      "scenario_id": "queue_pressure",
+      "driver": "run_queue_pressure_scenario",
+      "seed": "xrpl-agent-queue-pressure-v1",
+      "node_count": 5,
+      "rounds": 20,
+      "thresholds": {
+        "min_success_rate": 30,
+        "min_latest_ledger_seq": 1000020,
+        "max_avg_latency_ms": 95,
+        "max_drop_rate_pct": 45,
+        "max_peak_queue_depth": 140
+      },
+      "expected_outcomes": {
+        "status": "pass",
+        "deterministic": true,
+        "diagnostics_artifact": "queue-pressure-diagnostics.json"
+      }
+    }
+  ]
+}

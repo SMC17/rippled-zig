@@ -29,6 +29,7 @@ sim_base_ledger_seq="${SIM_BASE_LEDGER_SEQ:-1000000}"
 sim_base_latency_ms="${SIM_BASE_LATENCY_MS:-40}"
 sim_jitter_ms="${SIM_JITTER_MS:-25}"
 sim_scenario="${GATE_SIM_SCENARIO:-standard}"
+sim_manifest="${GATE_SIM_SCENARIO_MANIFEST:-test_data/sim_scenarios_manifest.json}"
 ts_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 fail() {
@@ -47,6 +48,53 @@ JSON
   exit 1
 }
 
+validate_scenario_manifest() {
+  local manifest_file="$1"
+  local scenario_id="$2"
+  local out_contract="$3"
+
+  if [[ ! -f "$manifest_file" ]]; then
+    fail "Missing simulation scenario manifest: $manifest_file"
+  fi
+
+  if ! jq -e '
+    .schema_version == 1 and
+    .manifest_type == "simulation_scenarios" and
+    (.scenarios | type == "array" and length > 0) and
+    (all(.scenarios[];
+      (.scenario_id | type == "string" and length > 0) and
+      (.driver | type == "string" and length > 0) and
+      (.seed | type == "string" and length > 0) and
+      (.node_count | type == "number") and
+      (.rounds | type == "number") and
+      (.thresholds | type == "object") and
+      (.expected_outcomes | type == "object")
+    ))
+  ' "$manifest_file" >/dev/null; then
+    fail "Invalid simulation scenario manifest schema: $manifest_file"
+  fi
+
+  if ! jq -e --arg sid "$scenario_id" '
+    .scenarios[] | select(.scenario_id == $sid)
+  ' "$manifest_file" > "$out_contract"; then
+    fail "Scenario manifest missing entry for scenario: $scenario_id"
+  fi
+}
+
+validate_scenario_manifest "$sim_manifest" "$sim_scenario" "$artifact_dir/sim-scenario-contract.json"
+
+manifest_node_count="$(jq -r '.node_count' "$artifact_dir/sim-scenario-contract.json")"
+manifest_rounds="$(jq -r '.rounds' "$artifact_dir/sim-scenario-contract.json")"
+manifest_seed="$(jq -r '.seed' "$artifact_dir/sim-scenario-contract.json")"
+manifest_expected_status="$(jq -r '.expected_outcomes.status // "pass"' "$artifact_dir/sim-scenario-contract.json")"
+manifest_expected_deterministic="$(jq -r '.expected_outcomes.deterministic // true' "$artifact_dir/sim-scenario-contract.json")"
+
+if ! awk -v got="$sim_nodes" -v want="$manifest_node_count" 'BEGIN { exit !(got+0 == want+0) }'; then
+  fail "Scenario manifest node_count mismatch: configured=$sim_nodes manifest=$manifest_node_count"
+fi
+if ! awk -v got="$sim_rounds" -v want="$manifest_rounds" 'BEGIN { exit !(got+0 == want+0) }'; then
+  fail "Scenario manifest rounds mismatch: configured=$sim_rounds manifest=$manifest_rounds"
+fi
 if [[ "$sim_scenario" == "queue_pressure" ]]; then
   SIM_NODES="$sim_nodes" \
   SIM_ROUNDS="$sim_rounds" \
@@ -67,6 +115,7 @@ if [[ "$sim_scenario" == "queue_pressure" ]]; then
   deterministic="$(jq -r '.deterministic // false' "$summary_file")"
   nodes="$(jq -r '.cluster.nodes // 0' "$summary_file")"
   rounds="$(jq -r '.cluster.rounds // 0' "$summary_file")"
+  observed_seed="$(jq -r '.cluster.seed // ""' "$summary_file")"
   success_rate="$(jq -r '.metrics.success_rate // -1' "$summary_file")"
   avg_latency_ms="$(jq -r '.metrics.latency_ms.avg // -1' "$summary_file")"
   latest_ledger_seq="$(jq -r '.metrics.latest_ledger_seq // -1' "$summary_file")"
@@ -75,9 +124,20 @@ if [[ "$sim_scenario" == "queue_pressure" ]]; then
   max_drop_rate_pct="$(jq -r '.envelope.max_drop_rate_pct // -1' "$summary_file")"
   max_avg_latency_ms_envelope="$(jq -r '.envelope.max_avg_latency_ms // -1' "$summary_file")"
   max_peak_queue_depth_envelope="$(jq -r '.envelope.max_peak_queue_depth // -1' "$summary_file")"
+  manifest_min_success_rate="$(jq -r '.thresholds.min_success_rate // -1' "$artifact_dir/sim-scenario-contract.json")"
+  manifest_min_latest_ledger_seq="$(jq -r '.thresholds.min_latest_ledger_seq // -1' "$artifact_dir/sim-scenario-contract.json")"
+  manifest_max_avg_latency_ms="$(jq -r '.thresholds.max_avg_latency_ms // -1' "$artifact_dir/sim-scenario-contract.json")"
+  manifest_max_drop_rate_pct="$(jq -r '.thresholds.max_drop_rate_pct // -1' "$artifact_dir/sim-scenario-contract.json")"
+  manifest_max_peak_queue_depth="$(jq -r '.thresholds.max_peak_queue_depth // -1' "$artifact_dir/sim-scenario-contract.json")"
 
-  if [[ "$deterministic" != "true" ]]; then
+  if [[ "$deterministic" != "$manifest_expected_deterministic" ]]; then
     fail "Queue-pressure deterministic flag is false"
+  fi
+  if [[ -z "${SIM_SEED:-}" && "$observed_seed" != "$manifest_seed" ]]; then
+    fail "Queue-pressure seed mismatch vs manifest: observed=$observed_seed manifest=$manifest_seed"
+  fi
+  if [[ "$status" != "$manifest_expected_status" && "$status" == "pass" ]]; then
+    fail "Queue-pressure status mismatch vs manifest: observed=$status manifest=$manifest_expected_status"
   fi
   if ! awk -v got="$nodes" -v min="$sim_nodes" 'BEGIN { exit !(got+0 >= min+0) }'; then
     fail "Queue-pressure nodes below configured minimum: $nodes < $sim_nodes"
@@ -85,8 +145,20 @@ if [[ "$sim_scenario" == "queue_pressure" ]]; then
   if ! awk -v got="$rounds" -v min="$sim_rounds" 'BEGIN { exit !(got+0 >= min+0) }'; then
     fail "Queue-pressure rounds below configured minimum: $rounds < $sim_rounds"
   fi
-  if ! awk -v got="$latest_ledger_seq" -v min="$min_latest_ledger_seq" 'BEGIN { exit !(got+0 >= min+0) }'; then
-    fail "Queue-pressure latest_ledger_seq below threshold: $latest_ledger_seq < $min_latest_ledger_seq"
+  if ! awk -v got="$latest_ledger_seq" -v min="$manifest_min_latest_ledger_seq" 'BEGIN { exit !(got+0 >= min+0) }'; then
+    fail "Queue-pressure latest_ledger_seq below threshold: $latest_ledger_seq < $manifest_min_latest_ledger_seq"
+  fi
+  if ! awk -v got="$success_rate" -v min="$manifest_min_success_rate" 'BEGIN { exit !(got+0 >= min+0) }'; then
+    fail "Queue-pressure success_rate below threshold: $success_rate < $manifest_min_success_rate"
+  fi
+  if ! awk -v got="$avg_latency_ms" -v max="$manifest_max_avg_latency_ms" 'BEGIN { exit !(got+0 <= max+0) }'; then
+    fail "Queue-pressure avg latency above threshold: $avg_latency_ms > $manifest_max_avg_latency_ms"
+  fi
+  if ! awk -v got="$drop_rate_pct" -v max="$manifest_max_drop_rate_pct" 'BEGIN { exit !(got+0 <= max+0) }'; then
+    fail "Queue-pressure drop_rate above threshold: $drop_rate_pct > $manifest_max_drop_rate_pct"
+  fi
+  if ! awk -v got="$peak_queue_depth" -v max="$manifest_max_peak_queue_depth" 'BEGIN { exit !(got+0 <= max+0) }'; then
+    fail "Queue-pressure peak queue depth above threshold: $peak_queue_depth > $manifest_max_peak_queue_depth"
   fi
 
   if [[ "$status" != "pass" ]]; then
@@ -108,11 +180,11 @@ if [[ "$sim_scenario" == "queue_pressure" ]]; then
   "thresholds": {
     "nodes_min": $sim_nodes,
     "rounds_min": $sim_rounds,
-    "success_rate_min": $min_success_rate,
-    "avg_latency_ms_max": $max_avg_latency_ms_envelope,
-    "latest_ledger_seq_min": $min_latest_ledger_seq,
-    "drop_rate_pct_max": $max_drop_rate_pct,
-    "peak_queue_depth_max": $max_peak_queue_depth_envelope
+    "success_rate_min": $manifest_min_success_rate,
+    "avg_latency_ms_max": $manifest_max_avg_latency_ms,
+    "latest_ledger_seq_min": $manifest_min_latest_ledger_seq,
+    "drop_rate_pct_max": $manifest_max_drop_rate_pct,
+    "peak_queue_depth_max": $manifest_max_peak_queue_depth
   },
   "observed": {
     "nodes": $nodes,
@@ -150,7 +222,7 @@ fi
 
 SIM_NODES="$sim_nodes" \
 SIM_ROUNDS="$sim_rounds" \
-SIM_SEED="$sim_seed" \
+SIM_SEED="${SIM_SEED:-$manifest_seed}" \
 SIM_BASE_LEDGER_SEQ="$sim_base_ledger_seq" \
 SIM_BASE_LATENCY_MS="$sim_base_latency_ms" \
 SIM_JITTER_MS="$sim_jitter_ms" \
@@ -165,14 +237,21 @@ status="$(jq -r '.status // "unknown"' "$summary_file")"
 deterministic="$(jq -r '.deterministic // false' "$summary_file")"
 nodes="$(jq -r '.cluster.nodes // 0' "$summary_file")"
 rounds="$(jq -r '.cluster.rounds // 0' "$summary_file")"
+observed_seed="$(jq -r '.cluster.seed // ""' "$summary_file")"
 success_rate="$(jq -r '.metrics.success_rate // -1' "$summary_file")"
 avg_latency_ms="$(jq -r '.metrics.latency_ms.avg // -1' "$summary_file")"
 latest_ledger_seq="$(jq -r '.metrics.latest_ledger_seq // -1' "$summary_file")"
+manifest_min_success_rate="$(jq -r '.thresholds.min_success_rate // -1' "$artifact_dir/sim-scenario-contract.json")"
+manifest_max_avg_latency_ms="$(jq -r '.thresholds.max_avg_latency_ms // -1' "$artifact_dir/sim-scenario-contract.json")"
+manifest_min_latest_ledger_seq="$(jq -r '.thresholds.min_latest_ledger_seq // -1' "$artifact_dir/sim-scenario-contract.json")"
 
-if [[ "$status" != "pass" ]]; then
+if [[ -z "${SIM_SEED:-}" && "$observed_seed" != "$manifest_seed" ]]; then
+  fail "Simulation seed mismatch vs manifest: observed=$observed_seed manifest=$manifest_seed"
+fi
+if [[ "$status" != "$manifest_expected_status" ]]; then
   fail "Simulation status is not pass: $status"
 fi
-if [[ "$deterministic" != "true" ]]; then
+if [[ "$deterministic" != "$manifest_expected_deterministic" ]]; then
   fail "Simulation deterministic flag is false"
 fi
 if ! awk -v got="$nodes" -v min="$sim_nodes" 'BEGIN { exit !(got+0 >= min+0) }'; then
@@ -181,14 +260,14 @@ fi
 if ! awk -v got="$rounds" -v min="$sim_rounds" 'BEGIN { exit !(got+0 >= min+0) }'; then
   fail "Simulation rounds below configured minimum: $rounds < $sim_rounds"
 fi
-if ! awk -v got="$success_rate" -v min="$min_success_rate" 'BEGIN { exit !(got+0 >= min+0) }'; then
-  fail "Simulation success_rate below threshold: $success_rate < $min_success_rate"
+if ! awk -v got="$success_rate" -v min="$manifest_min_success_rate" 'BEGIN { exit !(got+0 >= min+0) }'; then
+  fail "Simulation success_rate below threshold: $success_rate < $manifest_min_success_rate"
 fi
-if ! awk -v got="$avg_latency_ms" -v max="$max_avg_latency_ms" 'BEGIN { exit !(got+0 <= max+0) }'; then
-  fail "Simulation avg latency above threshold: $avg_latency_ms > $max_avg_latency_ms"
+if ! awk -v got="$avg_latency_ms" -v max="$manifest_max_avg_latency_ms" 'BEGIN { exit !(got+0 <= max+0) }'; then
+  fail "Simulation avg latency above threshold: $avg_latency_ms > $manifest_max_avg_latency_ms"
 fi
-if ! awk -v got="$latest_ledger_seq" -v min="$min_latest_ledger_seq" 'BEGIN { exit !(got+0 >= min+0) }'; then
-  fail "Simulation latest_ledger_seq below threshold: $latest_ledger_seq < $min_latest_ledger_seq"
+if ! awk -v got="$latest_ledger_seq" -v min="$manifest_min_latest_ledger_seq" 'BEGIN { exit !(got+0 >= min+0) }'; then
+  fail "Simulation latest_ledger_seq below threshold: $latest_ledger_seq < $manifest_min_latest_ledger_seq"
 fi
 
 cat > "$artifact_dir/sim-thresholds.json" <<JSON
@@ -200,9 +279,9 @@ cat > "$artifact_dir/sim-thresholds.json" <<JSON
   "thresholds": {
     "nodes_min": $sim_nodes,
     "rounds_min": $sim_rounds,
-    "success_rate_min": $min_success_rate,
-    "avg_latency_ms_max": $max_avg_latency_ms,
-    "latest_ledger_seq_min": $min_latest_ledger_seq
+    "success_rate_min": $manifest_min_success_rate,
+    "avg_latency_ms_max": $manifest_max_avg_latency_ms,
+    "latest_ledger_seq_min": $manifest_min_latest_ledger_seq
   },
   "observed": {
     "nodes": $nodes,
@@ -210,7 +289,8 @@ cat > "$artifact_dir/sim-thresholds.json" <<JSON
     "success_rate": $success_rate,
     "avg_latency_ms": $avg_latency_ms,
     "latest_ledger_seq": $latest_ledger_seq
-  }
+  },
+  "contract_artifact": "sim-scenario-contract.json"
 }
 JSON
 
