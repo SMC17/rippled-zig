@@ -2,6 +2,8 @@ const std = @import("std");
 const types = @import("types.zig");
 const ledger = @import("ledger.zig");
 const crypto = @import("crypto.zig");
+pub const types_mod = types;
+pub const ledger_mod = ledger;
 
 /// Configurable consensus parameters for simulation and research
 pub const ConsensusConfig = struct {

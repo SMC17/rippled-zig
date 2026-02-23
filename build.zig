@@ -119,6 +119,32 @@ pub fn build(b: *std.Build) void {
     const gate_e_step = b.step("gate-e", "Run Gate E security checks");
     gate_e_step.dependOn(&run_gate_e_tests.step);
 
+    // Research: parameterized consensus experiment harness
+    const consensus_exp_module = b.createModule(.{
+        .root_source_file = b.path("tools/consensus_experiment.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    consensus_exp_module.addImport("consensus", b.createModule(.{
+        .root_source_file = b.path("src/consensus.zig"),
+        .target = target,
+        .optimize = optimize,
+    }));
+    const consensus_exp_exe = b.addExecutable(.{
+        .name = "consensus-experiment",
+        .root_module = consensus_exp_module,
+    });
+    consensus_exp_exe.linkLibC();
+    if (use_secp256k1) {
+        consensus_exp_exe.linkSystemLibrary("secp256k1");
+    }
+    const run_consensus_exp = b.addRunArtifact(consensus_exp_exe);
+    if (b.args) |args| {
+        run_consensus_exp.addArgs(args);
+    }
+    const consensus_exp_step = b.step("consensus-experiment", "Run parameterized consensus experiment harness");
+    consensus_exp_step.dependOn(&run_consensus_exp.step);
+
     // WASM: Protocol kernel (hash/serialization subset)
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,
