@@ -215,6 +215,7 @@ fn assertAgentConfigGetSchema(config_payload: []const u8, schema_payload: []cons
 fn assertRpcLiveMethodsContracts(
     server_info_payload: []const u8,
     fee_payload: []const u8,
+    ledger_payload: []const u8,
     account_info_payload: []const u8,
     submit_payload: []const u8,
     ping_payload: []const u8,
@@ -226,6 +227,8 @@ fn assertRpcLiveMethodsContracts(
     defer server_info_parsed.deinit();
     var fee_parsed = try std.json.parseFromSlice(std.json.Value, allocator, fee_payload, .{});
     defer fee_parsed.deinit();
+    var ledger_parsed = try std.json.parseFromSlice(std.json.Value, allocator, ledger_payload, .{});
+    defer ledger_parsed.deinit();
     var account_parsed = try std.json.parseFromSlice(std.json.Value, allocator, account_info_payload, .{});
     defer account_parsed.deinit();
     var submit_parsed = try std.json.parseFromSlice(std.json.Value, allocator, submit_payload, .{});
@@ -303,6 +306,40 @@ fn assertRpcLiveMethodsContracts(
         const expected_status = try getString(try getField(fee_schema, "expected_status"));
         const actual_status = try getString(try getField(fee_result, "status"));
         if (!std.mem.eql(u8, actual_status, expected_status)) return error.RpcContractMismatch;
+    }
+
+    // account_info
+    // ledger
+    {
+        const ledger_schema = try getObject(try getField(methods, "ledger"));
+        const ledger_root = try getObject(ledger_parsed.value);
+        const req_fields = switch (try getField(ledger_schema, "required_fields")) {
+            .array => |arr| arr.items,
+            else => return error.ExpectedArray,
+        };
+        try ensureRequiredFields(ledger_root, req_fields);
+
+        const ledger_result = try getObject(try getField(ledger_root, "result"));
+        const req_result_fields = switch (try getField(ledger_schema, "required_result_fields")) {
+            .array => |arr| arr.items,
+            else => return error.ExpectedArray,
+        };
+        try ensureRequiredFields(ledger_result, req_result_fields);
+
+        const ledger_obj = try getObject(try getField(ledger_result, "ledger"));
+        const req_ledger_fields = switch (try getField(ledger_schema, "required_ledger_fields")) {
+            .array => |arr| arr.items,
+            else => return error.ExpectedArray,
+        };
+        try ensureRequiredFields(ledger_obj, req_ledger_fields);
+
+        const expected_status = try getString(try getField(ledger_schema, "expected_status"));
+        const actual_status = try getString(try getField(ledger_result, "status"));
+        if (!std.mem.eql(u8, actual_status, expected_status)) return error.RpcContractMismatch;
+
+        const expected_validated = try getBool(try getField(ledger_schema, "expected_validated"));
+        const actual_validated = try getBool(try getField(ledger_result, "validated"));
+        if (actual_validated != expected_validated) return error.RpcContractMismatch;
     }
 
     // account_info
@@ -414,6 +451,7 @@ fn assertRpcLiveNegativeContracts(server: *rpc.RpcServer, schema_payload: []cons
     const research_cases = [_][]const u8{
         "account_info_missing_param",
         "account_info_invalid_account",
+        "ledger_invalid_params",
         "submit_missing_blob",
         "submit_empty_blob",
         "submit_non_hex_blob",
@@ -1038,6 +1076,8 @@ pub fn main() !void {
     const fee = try methods.fee();
     defer allocator.free(fee);
     try assertFeeLocal(fee, allocator);
+    const ledger_info = try methods.ledgerInfo(null);
+    defer allocator.free(ledger_info);
     const agent_status = try methods.agentStatus(1000);
     defer allocator.free(agent_status);
     const agent_config_get = try methods.agentConfigGet();
@@ -1077,6 +1117,6 @@ pub fn main() !void {
     try assertStrictSecpVectors(allocator);
     try assertAgentStatusSchema(agent_status, fixture_agent_schema, allocator);
     try assertAgentConfigGetSchema(agent_config_get, fixture_agent_config_schema, allocator);
-    try assertRpcLiveMethodsContracts(server_info, fee, account_info, submit, ping, ledger_current, fixture_rpc_live_methods_schema, allocator);
+    try assertRpcLiveMethodsContracts(server_info, fee, ledger_info, account_info, submit, ping, ledger_current, fixture_rpc_live_methods_schema, allocator);
     try assertRpcLiveNegativeContracts(&rpc_server, fixture_rpc_live_negative_schema, allocator);
 }

@@ -170,6 +170,11 @@ jq -e '.methods.fee.required_fields == ["result"]' test_data/rpc_live_methods_sc
 jq -e '.methods.fee.required_result_fields == ["drops","ledger_current_index","status"]' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.fee.required_drops_fields == ["base_fee","minimum_fee","median_fee","open_ledger_fee"]' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.fee.expected_status == "success"' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.ledger.required_fields == ["result"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.ledger.required_result_fields == ["ledger","ledger_hash","ledger_index","status","validated"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.ledger.required_ledger_fields == ["ledger_index","ledger_hash","parent_hash","account_hash","transaction_hash","total_coins","closed"]' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.ledger.expected_status == "success"' test_data/rpc_live_methods_schema.json > /dev/null
+jq -e '.methods.ledger.expected_validated == true' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.account_info.required_result_fields == ["account_data","ledger_current_index","status","validated"]' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.account_info.required_account_data_fields == ["Account","Balance","Flags","OwnerCount","Sequence"]' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.account_info.expected_status == "success"' test_data/rpc_live_methods_schema.json > /dev/null
@@ -186,6 +191,7 @@ jq -e '.methods.ledger_current.required_result_fields == ["ledger_current_index"
 jq -e '.schema_version == 1' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.account_info_missing_param.expected_error == "Invalid account_info params"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.account_info_invalid_account.expected_error == "Invalid account_info params"' test_data/rpc_live_negative_schema.json > /dev/null
+jq -e '.cases.ledger_invalid_params.expected_error == "Invalid ledger params"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.submit_missing_blob.expected_error == "Invalid submit params"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.submit_empty_blob.expected_error == "Invalid submit params"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.submit_non_hex_blob.expected_error == "Invalid submit params"' test_data/rpc_live_negative_schema.json > /dev/null

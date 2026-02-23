@@ -14,6 +14,13 @@
       "required_drops_fields": ["base_fee", "minimum_fee", "median_fee", "open_ledger_fee"],
       "expected_status": "success"
     },
+    "ledger": {
+      "required_fields": ["result"],
+      "required_result_fields": ["ledger", "ledger_hash", "ledger_index", "status", "validated"],
+      "required_ledger_fields": ["ledger_index", "ledger_hash", "parent_hash", "account_hash", "transaction_hash", "total_coins", "closed"],
+      "expected_status": "success",
+      "expected_validated": true
+    },
     "account_info": {
       "required_fields": ["result"],
       "required_result_fields": ["account_data", "ledger_current_index", "status", "validated"],

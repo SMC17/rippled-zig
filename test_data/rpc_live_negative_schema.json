@@ -9,6 +9,10 @@
       "request": "{\"method\":\"account_info\",\"params\":{\"account\":\"invalid\"}}",
       "expected_error": "Invalid account_info params"
     },
+    "ledger_invalid_params": {
+      "request": "{\"method\":\"ledger\",\"params\":123}",
+      "expected_error": "Invalid ledger params"
+    },
     "submit_missing_blob": {
       "request": "{\"method\":\"submit\",\"params\":{}}",
       "expected_error": "Invalid submit params"

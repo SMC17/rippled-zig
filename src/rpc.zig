@@ -401,6 +401,27 @@ pub const RpcServer = struct {
         return try allocator.dupe(u8, tx_blob);
     }
 
+    fn parseLedgerParams(body: []const u8, allocator: std.mem.Allocator) !?types.LedgerSequence {
+        var parsed = try std.json.parseFromSlice(std.json.Value, allocator, body, .{});
+        defer parsed.deinit();
+        const root = switch (parsed.value) {
+            .object => |obj| obj,
+            else => return error.InvalidRequest,
+        };
+        if (root.get("params") == null) return null;
+        const params = try parseSingleParamsObject(root);
+
+        const ledger_index_value = params.get("ledger_index") orelse return null;
+        return switch (ledger_index_value) {
+            .integer => |n| blk: {
+                if (n < 0) return error.InvalidRequest;
+                break :blk @as(types.LedgerSequence, @intCast(n));
+            },
+            .string => |s| std.fmt.parseInt(types.LedgerSequence, s, 10) catch return error.InvalidRequest,
+            else => error.InvalidRequest,
+        };
+    }
+
     /// Handle JSON-RPC request
     fn handleJsonRpc(self: *RpcServer, body: []const u8) ![]u8 {
         const uptime_i64 = std.time.timestamp() - self.start_time;
@@ -424,7 +445,8 @@ pub const RpcServer = struct {
             return self.wrapJsonHttpResponse(payload);
         }
         if (std.mem.eql(u8, method, "ledger")) {
-            const payload = try self.methods.ledgerInfo(null);
+            const ledger_index = parseLedgerParams(body, self.allocator) catch return self.buildRpcErrorResponse("Invalid ledger params");
+            const payload = try self.methods.ledgerInfo(ledger_index);
             defer self.allocator.free(payload);
             return self.wrapJsonHttpResponse(payload);
         }
@@ -887,6 +909,23 @@ test "submit rejects unsupported transaction type deterministically" {
     const resp = try server.handleJsonRpc(req);
     defer allocator.free(resp);
     try std.testing.expect(std.mem.indexOf(u8, resp, "Unsupported submit transaction type") != null);
+}
+
+test "ledger rejects malformed params deterministically" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    var server = RpcServer.init(allocator, 5005, &lm, &state, &processor);
+    defer server.deinit();
+
+    const resp = try server.handleJsonRpc("{\"method\":\"ledger\",\"params\":123}");
+    defer allocator.free(resp);
+    try std.testing.expect(std.mem.indexOf(u8, resp, "Invalid ledger params") != null);
 }
 
 test "submit payment errors are deterministic" {
