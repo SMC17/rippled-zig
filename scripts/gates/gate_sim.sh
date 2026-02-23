@@ -28,6 +28,7 @@ sim_seed="${SIM_SEED:-xrpl-agent-lab-v1}"
 sim_base_ledger_seq="${SIM_BASE_LEDGER_SEQ:-1000000}"
 sim_base_latency_ms="${SIM_BASE_LATENCY_MS:-40}"
 sim_jitter_ms="${SIM_JITTER_MS:-25}"
+sim_scenario="${GATE_SIM_SCENARIO:-standard}"
 ts_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 fail() {
@@ -45,6 +46,107 @@ fail() {
 JSON
   exit 1
 }
+
+if [[ "$sim_scenario" == "queue_pressure" ]]; then
+  SIM_NODES="$sim_nodes" \
+  SIM_ROUNDS="$sim_rounds" \
+  SIM_SEED="${SIM_SEED:-xrpl-agent-queue-pressure-v1}" \
+  SIM_BASE_LEDGER_SEQ="$sim_base_ledger_seq" \
+  scripts/sim/run_queue_pressure_scenario.sh "$artifact_dir"
+
+  summary_file="$artifact_dir/queue-pressure-summary.json"
+  diagnostics_file="$artifact_dir/queue-pressure-diagnostics.json"
+  if [[ ! -f "$summary_file" ]]; then
+    fail "Missing queue-pressure summary artifact"
+  fi
+  if [[ ! -f "$diagnostics_file" ]]; then
+    fail "Missing queue-pressure diagnostics artifact"
+  fi
+
+  status="$(jq -r '.status // "unknown"' "$summary_file")"
+  deterministic="$(jq -r '.deterministic // false' "$summary_file")"
+  nodes="$(jq -r '.cluster.nodes // 0' "$summary_file")"
+  rounds="$(jq -r '.cluster.rounds // 0' "$summary_file")"
+  success_rate="$(jq -r '.metrics.success_rate // -1' "$summary_file")"
+  avg_latency_ms="$(jq -r '.metrics.latency_ms.avg // -1' "$summary_file")"
+  latest_ledger_seq="$(jq -r '.metrics.latest_ledger_seq // -1' "$summary_file")"
+  drop_rate_pct="$(jq -r '.metrics.drop_rate_pct // -1' "$summary_file")"
+  peak_queue_depth="$(jq -r '.metrics.peak_queue_depth // -1' "$summary_file")"
+  max_drop_rate_pct="$(jq -r '.envelope.max_drop_rate_pct // -1' "$summary_file")"
+  max_avg_latency_ms_envelope="$(jq -r '.envelope.max_avg_latency_ms // -1' "$summary_file")"
+  max_peak_queue_depth_envelope="$(jq -r '.envelope.max_peak_queue_depth // -1' "$summary_file")"
+
+  if [[ "$deterministic" != "true" ]]; then
+    fail "Queue-pressure deterministic flag is false"
+  fi
+  if ! awk -v got="$nodes" -v min="$sim_nodes" 'BEGIN { exit !(got+0 >= min+0) }'; then
+    fail "Queue-pressure nodes below configured minimum: $nodes < $sim_nodes"
+  fi
+  if ! awk -v got="$rounds" -v min="$sim_rounds" 'BEGIN { exit !(got+0 >= min+0) }'; then
+    fail "Queue-pressure rounds below configured minimum: $rounds < $sim_rounds"
+  fi
+  if ! awk -v got="$latest_ledger_seq" -v min="$min_latest_ledger_seq" 'BEGIN { exit !(got+0 >= min+0) }'; then
+    fail "Queue-pressure latest_ledger_seq below threshold: $latest_ledger_seq < $min_latest_ledger_seq"
+  fi
+
+  if [[ "$status" != "pass" ]]; then
+    root_reason="$(jq -r '.root_cause.reason // "unknown"' "$diagnostics_file")"
+    root_round="$(jq -r '.root_cause.first_breach_round // 0' "$diagnostics_file")"
+    root_metric="$(jq -r '.root_cause.metric // ""' "$diagnostics_file")"
+    root_observed="$(jq -r '.root_cause.observed // 0' "$diagnostics_file")"
+    root_threshold="$(jq -r '.root_cause.threshold // 0' "$diagnostics_file")"
+    fail "Queue-pressure threshold breach: ${root_reason} at round ${root_round} (${root_metric}=${root_observed}, threshold=${root_threshold})"
+  fi
+
+  cat > "$artifact_dir/sim-thresholds.json" <<JSON
+{
+  "gate": "SIM",
+  "scenario": "queue_pressure",
+  "status": "pass",
+  "profile": "$profile",
+  "timestamp_utc": "$ts_iso",
+  "thresholds": {
+    "nodes_min": $sim_nodes,
+    "rounds_min": $sim_rounds,
+    "success_rate_min": $min_success_rate,
+    "avg_latency_ms_max": $max_avg_latency_ms_envelope,
+    "latest_ledger_seq_min": $min_latest_ledger_seq,
+    "drop_rate_pct_max": $max_drop_rate_pct,
+    "peak_queue_depth_max": $max_peak_queue_depth_envelope
+  },
+  "observed": {
+    "nodes": $nodes,
+    "rounds": $rounds,
+    "success_rate": $success_rate,
+    "avg_latency_ms": $avg_latency_ms,
+    "latest_ledger_seq": $latest_ledger_seq,
+    "drop_rate_pct": $drop_rate_pct,
+    "peak_queue_depth": $peak_queue_depth
+  },
+  "diagnostics_artifact": "queue-pressure-diagnostics.json"
+}
+JSON
+
+  cp "$artifact_dir/sim-thresholds.json" "$artifact_dir/sim-gate-report.json"
+  cat > "$artifact_dir/sim-trend-point.json" <<JSON
+{
+  "timestamp_utc": "$ts_iso",
+  "profile": "$profile",
+  "scenario": "queue_pressure",
+  "status": "pass",
+  "observed": {
+    "nodes": $nodes,
+    "rounds": $rounds,
+    "success_rate": $success_rate,
+    "avg_latency_ms": $avg_latency_ms,
+    "latest_ledger_seq": $latest_ledger_seq,
+    "drop_rate_pct": $drop_rate_pct,
+    "peak_queue_depth": $peak_queue_depth
+  }
+}
+JSON
+  exit 0
+fi
 
 SIM_NODES="$sim_nodes" \
 SIM_ROUNDS="$sim_rounds" \
