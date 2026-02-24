@@ -98,6 +98,51 @@ fn writeFailureJson(path: []const u8, scenario: []const u8, failure: invariants.
     try w.flush();
 }
 
+fn writeLedgerHashFailureJson(
+    path: []const u8,
+    scenario: []const u8,
+    expected_hash: types.LedgerHash,
+    calculated_hash: types.LedgerHash,
+    ctx: anytype,
+) !void {
+    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
+    var buf: [4096]u8 = undefined;
+    var fw: std.fs.File.Writer = .init(file, &buf);
+    const w = &fw.interface;
+
+    try w.print(
+        \\{{
+        \\  "schema_version": 1,
+        \\  "status": "fail",
+        \\  "deterministic": true,
+        \\  "scenario": "{s}",
+        \\  "failure": {{
+        \\    "invariant": "ledger_hash_validity",
+        \\    "reason": "ledger_hash_mismatch",
+        \\    "context": {{
+        \\      "expected_hash_prefix": "{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}",
+        \\      "calculated_hash_prefix": "{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}"
+        \\    }}
+        \\  }},
+        \\  "run_context": {{
+        \\    "nodes": {d},
+        \\    "rounds": {d},
+        \\    "base_ledger_seq": {d},
+        \\    "latest_ledger_seq": {d}
+        \\  }}
+        \\}}
+    , .{
+        scenario,
+        expected_hash[0], expected_hash[1], expected_hash[2], expected_hash[3],
+        expected_hash[4], expected_hash[5], expected_hash[6], expected_hash[7],
+        calculated_hash[0], calculated_hash[1], calculated_hash[2], calculated_hash[3],
+        calculated_hash[4], calculated_hash[5], calculated_hash[6], calculated_hash[7],
+        ctx.nodes, ctx.rounds, ctx.base_ledger_seq, ctx.latest_ledger_seq,
+    });
+    try w.flush();
+}
+
 fn writePassJson(path: []const u8, scenario: []const u8, ctx: anytype) !void {
     const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
     defer file.close();
@@ -114,8 +159,16 @@ fn writePassJson(path: []const u8, scenario: []const u8, ctx: anytype) !void {
         \\  "checked_invariants": [
         \\    "balance_conservation",
         \\    "sequence_monotonicity",
-        \\    "ledger_sequence_monotonicity"
+        \\    "ledger_sequence_monotonicity",
+        \\    "total_coins_within_bound",
+        \\    "ledger_hash_validity"
         \\  ],
+        \\  "ledger_checks": {{
+        \\    "total_coins": {d},
+        \\    "max_xrp": {d},
+        \\    "ledger_hash_valid": true,
+        \\    "ledger_hash_prefix": "{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}"
+        \\  }},
         \\  "run_context": {{
         \\    "nodes": {d},
         \\    "rounds": {d},
@@ -123,7 +176,14 @@ fn writePassJson(path: []const u8, scenario: []const u8, ctx: anytype) !void {
         \\    "latest_ledger_seq": {d}
         \\  }}
         \\}}
-    , .{ scenario, ctx.nodes, ctx.rounds, ctx.base_ledger_seq, ctx.latest_ledger_seq });
+    , .{
+        scenario,
+        ctx.ledger_total_coins,
+        types.MAX_XRP,
+        ctx.ledger_hash[0], ctx.ledger_hash[1], ctx.ledger_hash[2], ctx.ledger_hash[3],
+        ctx.ledger_hash[4], ctx.ledger_hash[5], ctx.ledger_hash[6], ctx.ledger_hash[7],
+        ctx.nodes, ctx.rounds, ctx.base_ledger_seq, ctx.latest_ledger_seq,
+    });
     try w.flush();
 }
 
@@ -147,18 +207,6 @@ pub fn main() !void {
     const base_ledger_seq = envU64(allocator, "INV_BASE_LEDGER_SEQ", 1_000_000);
     const latest_ledger_seq = envU64(allocator, "INV_LATEST_LEDGER_SEQ", base_ledger_seq + rounds);
 
-    const ctx = struct {
-        nodes: u32,
-        rounds: u32,
-        base_ledger_seq: u64,
-        latest_ledger_seq: u64,
-    }{
-        .nodes = nodes,
-        .rounds = rounds,
-        .base_ledger_seq = base_ledger_seq,
-        .latest_ledger_seq = latest_ledger_seq,
-    };
-
     var before = ledger.AccountState.init(allocator);
     defer before.deinit();
     var after = ledger.AccountState.init(allocator);
@@ -180,6 +228,7 @@ pub fn main() !void {
     var seq_a_after: u32 = seq_a_before + 1;
     const seq_b_after: u32 = seq_b_before;
     var observed_latest_seq: u64 = latest_ledger_seq;
+    var ledger_total_coins: u64 = types.MAX_XRP;
 
     if (std.mem.eql(u8, fail_mode, "balance")) {
         after_b_balance += 1; // break sum conservation deterministically
@@ -187,6 +236,8 @@ pub fn main() !void {
         seq_a_after = seq_a_before - 1;
     } else if (std.mem.eql(u8, fail_mode, "ledger_sequence")) {
         observed_latest_seq = base_ledger_seq;
+    } else if (std.mem.eql(u8, fail_mode, "total_coins")) {
+        ledger_total_coins = types.MAX_XRP + 1;
     }
 
     try before.putAccount(.{
@@ -227,6 +278,39 @@ pub fn main() !void {
         .sequence = seq_b_after,
     });
 
+    var probe_ledger = ledger.Ledger{
+        .sequence = @intCast(@max(base_ledger_seq + 1, observed_latest_seq)),
+        .hash = [_]u8{0} ** 32,
+        .parent_hash = [_]u8{0xAB} ** 32,
+        .close_time = 1_700_000_000,
+        .close_time_resolution = 10,
+        .total_coins = ledger_total_coins,
+        .account_state_hash = [_]u8{0x11} ** 32,
+        .transaction_hash = [_]u8{0x22} ** 32,
+        .close_flags = 0,
+        .parent_close_time = 1_699_999_990,
+    };
+    probe_ledger.hash = probe_ledger.calculateHash();
+    if (std.mem.eql(u8, fail_mode, "ledger_hash")) {
+        probe_ledger.hash[0] ^= 0xFF;
+    }
+
+    const ctx = struct {
+        nodes: u32,
+        rounds: u32,
+        base_ledger_seq: u64,
+        latest_ledger_seq: u64,
+        ledger_total_coins: u64,
+        ledger_hash: types.LedgerHash,
+    }{
+        .nodes = nodes,
+        .rounds = rounds,
+        .base_ledger_seq = base_ledger_seq,
+        .latest_ledger_seq = observed_latest_seq,
+        .ledger_total_coins = probe_ledger.total_coins,
+        .ledger_hash = probe_ledger.hash,
+    };
+
     if (invariants.checkBalanceConservation(&after, fees_destroyed, before.sumBalances())) |failure| {
         try writeFailureJson(out_path, scenario, failure, ctx);
         return error.InvariantViolation;
@@ -239,6 +323,15 @@ pub fn main() !void {
     const new_seq: types.LedgerSequence = @intCast(observed_latest_seq);
     if (invariants.checkLedgerSequenceMonotonicity(prev_seq, new_seq)) |failure| {
         try writeFailureJson(out_path, scenario, failure, ctx);
+        return error.InvariantViolation;
+    }
+    if (invariants.checkTotalCoinsWithinBound(&probe_ledger)) |failure| {
+        try writeFailureJson(out_path, scenario, failure, ctx);
+        return error.InvariantViolation;
+    }
+    if (!ledger.LedgerManager.validateLedger(&probe_ledger)) {
+        const calculated = probe_ledger.calculateHash();
+        try writeLedgerHashFailureJson(out_path, scenario, probe_ledger.hash, calculated, ctx);
         return error.InvariantViolation;
     }
 
