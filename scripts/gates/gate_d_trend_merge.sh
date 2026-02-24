@@ -86,7 +86,15 @@ jq -n \
         else {
           server_info: (($p_tail | map(.latency_s.server_info | to_num) | map(select(. != null)) | add) / (($p_tail | map(.latency_s.server_info | to_num) | map(select(. != null)) | length) // 1)),
           fee: (($p_tail | map(.latency_s.fee | to_num) | map(select(. != null)) | add) / (($p_tail | map(.latency_s.fee | to_num) | map(select(. != null)) | length) // 1)),
-          ledger: (($p_tail | map(.latency_s.ledger | to_num) | map(select(. != null)) | add) / (($p_tail | map(.latency_s.ledger | to_num) | map(select(. != null)) | length) // 1))
+          ledger: (($p_tail | map(.latency_s.ledger | to_num) | map(select(. != null)) | add) / (($p_tail | map(.latency_s.ledger | to_num) | map(select(. != null)) | length) // 1)),
+          ping: (
+            ($p_tail | map(.latency_s.ping | to_num) | map(select(. != null))) as $vals |
+            if ($vals | length) == 0 then null else (($vals | add) / ($vals | length)) end
+          ),
+          ledger_current: (
+            ($p_tail | map(.latency_s.ledger_current | to_num) | map(select(. != null))) as $vals |
+            if ($vals | length) == 0 then null else (($vals | add) / ($vals | length)) end
+          )
         }
         end
       ),
@@ -95,7 +103,9 @@ jq -n \
         else {
           server_info: p95($p_tail | map(.latency_s.server_info)),
           fee: p95($p_tail | map(.latency_s.fee)),
-          ledger: p95($p_tail | map(.latency_s.ledger))
+          ledger: p95($p_tail | map(.latency_s.ledger)),
+          ping: p95($p_tail | map(.latency_s.ping)),
+          ledger_current: p95($p_tail | map(.latency_s.ledger_current))
         }
         end
       ),

@@ -62,6 +62,7 @@ Minimum operating discipline:
 - Keep at least 7 days of `trend-point.json` and `testnet-conformance.json`.
 - Investigate any consecutive failures before changing thresholds.
 - Treat threshold changes as reviewed policy updates, not ad hoc fixes.
+- Trend summaries now include latency metrics for `ping` and `ledger_current` (in addition to `server_info`, `fee`, `ledger`) when present in source artifacts.
 
 ## Secrets Handling and Rotation
 Storage:
