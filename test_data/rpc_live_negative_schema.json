@@ -53,6 +53,14 @@
       "request": "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"00000101010101010101010101010101010101010101000000000000000A000000080202020202020202020202020202020202020202000000000BEBC200\"}}",
       "expected_error": "Insufficient submit payment balance"
     },
+    "submit_zero_payment_amount": {
+      "request": "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"00000101010101010101010101010101010101010101000000000000000A0000000802020202020202020202020202020202020202020000000000000000\"}}",
+      "expected_error": "Invalid submit payment amount"
+    },
+    "submit_payment_amount_truncated": {
+      "request": "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"00000101010101010101010101010101010101010101000000000000000A00000008020202020202020202020202020202020202020200000000000F42\"}}",
+      "expected_error": "Invalid submit tx_blob"
+    },
     "submit_sequence_mismatch": {
       "request": "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"00000101010101010101010101010101010101010101000000000000000A0000270F020202020202020202020202020202020202020200000000000F4240\"}}",
       "expected_error": "Submit sequence mismatch"

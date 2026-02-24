@@ -995,6 +995,20 @@ test "submit payment errors are deterministic" {
     const insufficient_resp = try server.handleJsonRpc(insufficient_req);
     defer allocator.free(insufficient_resp);
     try std.testing.expect(std.mem.indexOf(u8, insufficient_resp, "Insufficient submit payment balance") != null);
+
+    // zero-amount payment is invalid
+    const zero_amount_req =
+        "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"00000101010101010101010101010101010101010101000000000000000A0000000802020202020202020202020202020202020202020000000000000000\"}}";
+    const zero_amount_resp = try server.handleJsonRpc(zero_amount_req);
+    defer allocator.free(zero_amount_resp);
+    try std.testing.expect(std.mem.indexOf(u8, zero_amount_resp, "Invalid submit payment amount") != null);
+
+    // truncated payment amount payload should fail parsing deterministically
+    const truncated_amount_req =
+        "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"00000101010101010101010101010101010101010101000000000000000A00000008020202020202020202020202020202020202020200000000000F42\"}}";
+    const truncated_amount_resp = try server.handleJsonRpc(truncated_amount_req);
+    defer allocator.free(truncated_amount_resp);
+    try std.testing.expect(std.mem.indexOf(u8, truncated_amount_resp, "Invalid submit tx_blob") != null);
 }
 
 test "submit sequence and fee boundary errors are deterministic and mutation-safe" {

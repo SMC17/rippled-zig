@@ -33,6 +33,8 @@ From `test_data/rpc_live_negative_schema.json`:
 - `submit_unsupported_tx_type`
 - `submit_missing_destination_account`
 - `submit_insufficient_payment_balance`
+- `submit_zero_payment_amount`
+- `submit_payment_amount_truncated`
 - `submit_sequence_mismatch`
 - `submit_fee_below_minimum`
 - `submit_blocked_in_production`
