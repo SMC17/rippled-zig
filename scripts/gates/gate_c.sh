@@ -192,6 +192,8 @@ jq -e '.schema_version == 1' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.account_info_missing_param.expected_error == "Invalid account_info params"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.account_info_invalid_account.expected_error == "Invalid account_info params"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.ledger_invalid_params.expected_error == "Invalid ledger params"' test_data/rpc_live_negative_schema.json > /dev/null
+jq -e '.cases.ledger_current_params_object.expected_error == "ledger_current does not accept params"' test_data/rpc_live_negative_schema.json > /dev/null
+jq -e '.cases.ledger_current_params_array.expected_error == "ledger_current does not accept params"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.submit_missing_blob.expected_error == "Invalid submit params"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.submit_empty_blob.expected_error == "Invalid submit params"' test_data/rpc_live_negative_schema.json > /dev/null
 jq -e '.cases.submit_non_hex_blob.expected_error == "Invalid submit params"' test_data/rpc_live_negative_schema.json > /dev/null

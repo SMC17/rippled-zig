@@ -13,6 +13,14 @@
       "request": "{\"method\":\"ledger\",\"params\":123}",
       "expected_error": "Invalid ledger params"
     },
+    "ledger_current_params_object": {
+      "request": "{\"method\":\"ledger_current\",\"params\":{}}",
+      "expected_error": "ledger_current does not accept params"
+    },
+    "ledger_current_params_array": {
+      "request": "{\"method\":\"ledger_current\",\"params\":[{}]}",
+      "expected_error": "ledger_current does not accept params"
+    },
     "submit_missing_blob": {
       "request": "{\"method\":\"submit\",\"params\":{}}",
       "expected_error": "Invalid submit params"

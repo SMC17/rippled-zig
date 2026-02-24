@@ -786,6 +786,27 @@ test "json-rpc live method coverage for account_info submit ping ledger_current"
     try std.testing.expect(std.mem.indexOf(u8, ledger_current_resp, "\"ledger_current_index\"") != null);
 }
 
+test "ledger_current rejects params deterministically" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    var server = RpcServer.init(allocator, 5005, &lm, &state, &processor);
+    defer server.deinit();
+
+    const object_params = try server.handleJsonRpc("{\"method\":\"ledger_current\",\"params\":{}}");
+    defer allocator.free(object_params);
+    try std.testing.expect(std.mem.indexOf(u8, object_params, "ledger_current does not accept params") != null);
+
+    const array_params = try server.handleJsonRpc("{\"method\":\"ledger_current\",\"params\":[{}]}");
+    defer allocator.free(array_params);
+    try std.testing.expect(std.mem.indexOf(u8, array_params, "ledger_current does not accept params") != null);
+}
+
 test "json-rpc profile policy blocks unsafe production transitions" {
     const allocator = std.testing.allocator;
     var lm = try ledger.LedgerManager.init(allocator);

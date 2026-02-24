@@ -452,6 +452,8 @@ fn assertRpcLiveNegativeContracts(server: *rpc.RpcServer, schema_payload: []cons
         "account_info_missing_param",
         "account_info_invalid_account",
         "ledger_invalid_params",
+        "ledger_current_params_object",
+        "ledger_current_params_array",
         "submit_missing_blob",
         "submit_empty_blob",
         "submit_non_hex_blob",
