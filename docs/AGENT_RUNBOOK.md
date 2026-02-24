@@ -41,6 +41,7 @@
 
 - **Base**: `scripts/sim/run_local_cluster.sh` — deterministic multi-node, configurable via `SIM_NODES`, `SIM_ROUNDS`, `SIM_SEED`
 - **Agent scenarios**: `scripts/sim/run_agent_scenarios.sh artifacts/sim-agent` — runs standard (5 nodes, 20 rounds), training (7 nodes, 50 rounds), stress (high jitter) and produces `scenarios-summary.json`
+- **Manifest-driven batch**: `scripts/sim/run_manifest_scenarios.sh artifacts/sim-manifest test_data/sim_scenarios_manifest.json` — runs manifest-declared scenarios (currently `standard`, `queue_pressure`) and produces `manifest-scenarios-summary.json`
 
 ## JSON-RPC Examples
 
