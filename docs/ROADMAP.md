@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: Active roadmap for `main` as of February 19, 2026.
+Status: Active roadmap for `main` as of February 24, 2026.
 
 Canonical companion docs:
 - `PROJECT_STATUS.md` (release decision + evidence register)
@@ -18,12 +18,12 @@ Canonical companion docs:
 | Milestone | Objective | Status | Exit Evidence |
 |---|---|---|---|
 | M0 | Stable quality-gate baseline (A/B/C/E + sim) | In place | `scripts/gates/gate_a.sh`, `scripts/gates/gate_b.sh`, `scripts/gates/gate_c.sh`, `scripts/gates/gate_e.sh`, `scripts/gates/gate_sim.sh` green in CI |
-| M1 | Live RPC hardening + strict contracts (`account_info`, `submit`, `ping`, `ledger_current`) | In progress | `test_data/rpc_live_methods_schema.json`, `test_data/rpc_live_negative_schema.json`, `src/parity_check.zig`, `scripts/gates/gate_c.sh` |
+| M1 | Live RPC hardening + strict contracts (`account_info`, `submit`, `ping`, `ledger_current`) | In progress (local/Gate C complete; Gate D evidence pending for latest `ping`/`ledger_current`) | `test_data/rpc_live_methods_schema.json`, `test_data/rpc_live_negative_schema.json`, `src/parity_check.zig`, `scripts/gates/gate_c.sh`, `scripts/gates/gate_d.sh` |
 | M2 | Control-plane policy boundary (`research` vs `production`) | In progress | profile policy tests in `src/rpc.zig` and `src/rpc_methods.zig`; method boundary checks in `gate_c` |
-| M3 | Testnet conformance trend discipline (Gate D) | In progress | `scripts/gates/gate_d.sh`, `scripts/gates/gate_d_trend_merge.sh`, `artifacts/*/testnet-conformance.json` |
+| M3 | Testnet conformance trend discipline (Gate D) | In progress (runbook + method coverage expanded; live rerun pending envs) | `scripts/gates/gate_d.sh`, `scripts/gates/gate_d_trend_merge.sh`, `docs/GATE_D_OPERATOR_RUNBOOK.md`, `artifacts/*/testnet-conformance.json` |
 | M4 | Submit-path capability expansion with deterministic failure contracts | In progress | submit apply tests + Gate C fixtures for positive and negative cases |
-| M5 | Agent-native protocol lab baseline | Planned | closed-loop runbook + policy docs + deterministic scenario library |
-| M6 | WASM experimentation path for hooks/tooling/simulation | Planned | wasm build target, fixtures, and CI evidence job |
+| M5 | Agent-native protocol lab baseline | In progress | closed-loop runbook + policy docs + deterministic scenario library + experiment harnesses |
+| M6 | WASM experimentation path for hooks/tooling/simulation | In progress | wasm build target, hooks example, and reproducible experiment docs |
 
 ## Current Quarter Execution Track
 
@@ -44,10 +44,10 @@ Canonical companion docs:
 - Operator runbook: `docs/GATE_D_OPERATOR_RUNBOOK.md` (secrets, cadence, troubleshooting).
 
 ## Near-Term Deliverables
-1. Add richer submit contract tiers beyond minimal payment shape.
-2. Add additional live RPC contract schemas where currently implicit.
-3. Publish control-plane and RPC contract docs as machine/human references.
-4. Add Gate D coverage for newly live methods as they graduate.
+1. Run Gate D with real testnet endpoints to close `#19` live evidence for `ping` and `ledger_current`.
+2. Add initial protocol invariants and gate-backed checks for research sandbox (`#28`).
+3. Deepen submit-path fidelity with additional transaction shapes and deterministic failure tiers.
+4. Continue live RPC contract expansion and Gate D method promotion cadence.
 
 ## Not In Scope For Current Release Decision
 - Mainnet validator operation.

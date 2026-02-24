@@ -9,6 +9,7 @@ artifacts/
 
 # Private and internal documents
 private/
+.docs_archive_local/
 docs/internal/
 docs/planning/
 

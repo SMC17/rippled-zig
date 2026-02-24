@@ -13,8 +13,10 @@
 | [`docs/AGENT_AUTOMATION_POLICY.md`](AGENT_AUTOMATION_POLICY.md) | Least-privilege agent automation checklist (repo/runtime/release boundaries) |
 | [`docs/RELEASE_SIGNING_POLICY.md`](RELEASE_SIGNING_POLICY.md) | Signed release artifact policy and verifier procedure |
 | [`docs/WASM_HOOK_EXPERIMENT.md`](WASM_HOOK_EXPERIMENT.md) | Minimal hooks-oriented WASM experiment build/run boundaries |
+| [`docs/GATE_D_OPERATOR_RUNBOOK.md`](GATE_D_OPERATOR_RUNBOOK.md) | Gate D secret setup, cadence, troubleshooting, evidence checklist |
 | [`docs/ROADMAP.md`](ROADMAP.md) | Milestones and execution track |
 | [`docs/ROADMAP_TO_PARITY.md`](ROADMAP_TO_PARITY.md) | Parity claim levels and workstreams |
+| [`docs/HISTORICAL_DOCS_INDEX.md`](HISTORICAL_DOCS_INDEX.md) | Index for retired/archived historical docs and recovery paths |
 
 ## CI and Gates
 
@@ -24,11 +26,7 @@
 
 ## Historical Documents
 
-The following are archived for reference only. See canonical docs above for current state.
+Historical documents that are no longer part of the active doc surface are indexed in:
+- `docs/HISTORICAL_DOCS_INDEX.md`
 
-- `HONEST_PARITY_ASSESSMENT.md`
-- `PARITY_PROGRESS.md`
-- `READY_FOR_LAUNCH.md`
-- `READY_TO_LAUNCH.md`
-- `LAUNCH_CHECKLIST.md`
-- `LAUNCH_ANNOUNCEMENT.md`
+Use Git history for authoritative recovery of retired files.

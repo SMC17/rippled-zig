@@ -2,8 +2,8 @@
 
 Canonical status for this repository. If any other file conflicts with this document, this document is authoritative.
 
-Last Updated: 2026-02-19
-Commit: 014cdf0 (submit payment negative contracts + Gate C enforcement)
+Last Updated: 2026-02-24
+Commit: working tree (documentation consolidation + execution-track updates)
 Status Owner: Engineering
 Scope: `main`
 
@@ -71,7 +71,8 @@ Pass Criteria:
 ### Gate D: Live Testnet Conformance
 Pass Criteria:
 - `scripts/gates/gate_d.sh` exits 0 with `TESTNET_RPC_URL` and `TESTNET_WS_URL` set.
-- Live ledger and fee fields validated from testnet responses.
+- Live `server_info`, `fee`, `ledger`, `ping`, and `ledger_current` fields/status validated from testnet responses.
+- Operator setup/cadence/troubleshooting follows `docs/GATE_D_OPERATOR_RUNBOOK.md`.
 - Operator setup/cadence/troubleshooting follows `docs/GATE_D_OPERATOR_RUNBOOK.md`.
 
 ### Gate E: Security
@@ -104,6 +105,16 @@ Pass Criteria:
 | R-003 | Partial secp256k1 and sync paths | High | Crypto/Network | complete implementation + conformance tests | 2026-03-04 | Open |
 
 ## Changes Since Last Update
+- Documentation consolidation (2026-02-24):
+  - refreshed canonical docs for roadmap/parity/execution-track/current RPC contract state,
+  - added `docs/HISTORICAL_DOCS_INDEX.md` and local ignored archive policy (`.docs_archive_local/`),
+  - removed stale historical docs from active repo surface (recoverable via Git history / local archive),
+  - added Gate D runbook and least-privilege automation policy to onboarding references,
+  - added minimal WASM hook experiment guide.
+- Execution-track progress since last status refresh:
+  - closed child issues `#13`-`#18`, `#20`-`#22`, `#25`-`#27`,
+  - `#19` (Gate D `ping`/`ledger_current`) is implemented but awaiting live testnet artifact run for final acceptance,
+  - `#28` remains the next unblocked research-sandbox child issue.
 - Completed tranche progression for live RPC/control-plane hardening:
   - strict live handling for `account_info`, `submit`, `ping`, and `ledger_current`,
   - production profile method-boundary enforcement,

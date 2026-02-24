@@ -1,6 +1,6 @@
 # Roadmap To Parity
 
-Status: Active parity program plan as of February 19, 2026.
+Status: Active parity program plan as of February 24, 2026.
 
 This document defines how parity claims can be earned. It replaces percentage-based claims with evidence-backed gates.
 
@@ -28,7 +28,7 @@ No claim above current evidence should appear in project docs.
 ## Current State (Based On Repository Evidence)
 - P0: achieved for current branch workflow.
 - P1: achieved for current live method subset and negative contracts.
-- P2: operationally available; requires environment secrets and sustained runs.
+- P2: operationally available; Gate D method coverage has expanded (`ping`, `ledger_current`) but latest live artifact evidence depends on testnet endpoint secrets.
 - P3/P4: not yet achieved.
 
 ## Workstreams To Reach Decision-Grade Parity
@@ -53,6 +53,7 @@ Exit evidence:
 ### Workstream 3: Live Testnet Conformance
 - Keep Gate D strict on endpoint health, status/error contracts, and latency thresholds.
 - Add live checks for newly promoted methods.
+- Maintain operator runbook for secrets/cadence/troubleshooting (`docs/GATE_D_OPERATOR_RUNBOOK.md`).
 
 Exit evidence:
 - `scripts/gates/gate_d.sh` pass artifacts
@@ -80,7 +81,7 @@ Exit evidence:
 3. Historical launch or parity docs are non-authoritative without current evidence.
 
 ## Next Milestones
-1. Expand live contract coverage for additional methods with fixture schemas.
-2. Add Gate D method coverage for each promoted method.
+1. Close live Gate D evidence gap for `ping` / `ledger_current` with real testnet artifacts (`#19`).
+2. Expand research-sandbox invariants and simulation evidence (`#28`).
 3. Achieve sustained 7-day trend thresholds with no high-severity open risks.
 4. Produce review packet for security and release decision sign-off.

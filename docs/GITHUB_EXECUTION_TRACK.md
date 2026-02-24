@@ -27,22 +27,25 @@ Status: Active issue map for turning the current codebase into an agent-native p
 - Track: consensus/formal-invariant research sandbox: `#12` https://github.com/SMC17/rippled-zig/issues/12
 
 ## Child Delivery Queue (1-3 day chunks)
-- `#13` Expand production blocked-method contract fixtures (good first issue)
-- `#14` Add transition invariant matrix tests for control-plane policy (expert-only)
-- `#15` Add Gate C strict schema contracts for server_info and fee (good first issue)
-- `#16` Add Gate C ledger contract + deterministic negative case (expert-only)
-- `#17` Add unsupported submit tx-type deterministic error contract (good first issue)
-- `#18` Add submit sequence/fee boundary contracts + mutation-safety tests (expert-only)
-- `#19` Extend Gate D live checks to ping and ledger_current (good first issue)
-- `#20` Publish Gate D operator runbook (secrets, cadence, troubleshooting) (good first issue)
-- `#21` Add deterministic simulation scenario manifest schema (good first issue)
-- `#22` Implement adversarial queue-pressure simulation scenario (expert-only)
-- `#23` Add WASM build target and CI smoke job (expert-only)
-- `#24` Add minimal hooks-oriented WASM example and docs (good first issue)
-- `#25` Define signed release artifact policy and verification runbook (expert-only)
-- `#26` Add least-privilege agent automation policy checklist (good first issue)
-- `#27` Build parameterized consensus experiment harness skeleton (expert-only)
-- `#28` Add initial protocol invariants for research sandbox (good first issue)
+Completed:
+- `#13` production blocked-method contract fixtures
+- `#14` control-plane transition invariant matrix tests
+- `#15` Gate C strict schema contracts for `server_info` and `fee`
+- `#16` Gate C `ledger` contract + deterministic negative case
+- `#17` unsupported submit tx-type deterministic error contract
+- `#18` submit sequence/fee boundary contracts + mutation-safety tests
+- `#20` Gate D operator runbook (secrets, cadence, troubleshooting)
+- `#21` deterministic simulation scenario manifest schema
+- `#22` adversarial queue-pressure simulation scenario
+- `#23` WASM build target and CI smoke job
+- `#24` minimal hooks-oriented WASM example and docs
+- `#25` signed release artifact policy and verification runbook
+- `#26` least-privilege agent automation policy checklist
+- `#27` parameterized consensus experiment harness skeleton
+
+Open / active:
+- `#19` Extend Gate D live checks to `ping` and `ledger_current` (implementation merged; live testnet artifact evidence pending `TESTNET_RPC_URL` / `TESTNET_WS_URL`)
+- `#28` Add initial protocol invariants for research sandbox (next unblocked research slice)
 
 ## Triage Filters
 - Starter tasks: label `good first issue`
@@ -59,3 +62,8 @@ Status: Active issue map for turning the current codebase into an agent-native p
 2. No parity or readiness claim can be merged without evidence in `PROJECT_STATUS.md`.
 3. Research-profile autonomy may mutate config; production-profile constraints are non-negotiable.
 4. Any self-modifying-agent workflow must remain sandboxed and review-gated.
+
+## Current Execution Snapshot (2026-02-24)
+- Core `Now` and `Next` child queue is complete.
+- Remaining child work is primarily `#19` (live env evidence) and `#28` (research follow-on).
+- Gate D expansion (`#19`) is code-complete but blocked on live testnet endpoint secrets for final acceptance evidence.
