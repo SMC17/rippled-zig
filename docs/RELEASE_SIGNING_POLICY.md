@@ -25,6 +25,9 @@ For each release tag:
 Reference workflow:
 - `.github/workflows/ci.yml` (`release-provenance` job)
 
+Operational companion:
+- `docs/SIGNER_KEY_ROTATION_DRILL.md` (prepare/rotate/verify/rollback + evidence checklist)
+
 ## Key Management Assumptions
 - Private signing key (`COSIGN_PRIVATE_KEY`) is stored only as GitHub Actions secret.
 - Optional key password (`COSIGN_PASSWORD`) is stored as secret.

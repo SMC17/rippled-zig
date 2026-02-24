@@ -1,6 +1,7 @@
 # Signed Releases with Cosign
 
 Policy companion: `docs/RELEASE_SIGNING_POLICY.md` (authoritative release-promotion requirements).
+Rotation drill companion: `docs/SIGNER_KEY_ROTATION_DRILL.md` (repeatable signer key rotation procedure + evidence checklist).
 
 rippled-zig release artifacts can be signed with **cosign** (Sigstore) when configured.
 
