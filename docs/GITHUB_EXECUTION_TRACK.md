@@ -44,8 +44,20 @@ Completed:
 - `#27` parameterized consensus experiment harness skeleton
 
 Open / active:
-- `#19` Extend Gate D live checks to `ping` and `ledger_current` (implementation merged; live testnet artifact evidence pending `TESTNET_RPC_URL` / `TESTNET_WS_URL`)
-- `#28` Add initial protocol invariants for research sandbox (next unblocked research slice)
+- `#29` production allowlist positive-case Gate C coverage matrix (good first issue)
+- `#30` control-plane policy snapshot artifact for gate-backed drift detection (expert-only)
+- `#31` `ledger_current` deterministic negative-case contract tiers (good first issue)
+- `#32` live Gate D positive `account_info` assertions using fixture-backed account (expert-only)
+- `#33` submit payment success-state contract (balance delta + sequence increment) (expert-only)
+- `#34` submit payment amount/zero-value deterministic boundary errors (good first issue)
+- `#35` Gate D trend summaries for `ping` / `ledger_current` latency (good first issue)
+- `#36` Gate D artifact schema validation for conformance/trend outputs (expert-only)
+- `#37` manifest-driven multi-scenario simulation runner (good first issue)
+- `#38` hook WASM export contract checker for local/CI smoke paths (expert-only)
+- `#39` Gate E artifact contract checks for security metrics/trend outputs (good first issue)
+- `#40` signer key rotation drill runbook + evidence checklist (good first issue)
+- `#41` extend invariant probe with `total_coins` and ledger hash validity (good first issue)
+- `#42` manifest-driven consensus experiment matrix runner (expert-only)
 
 ## Triage Filters
 - Starter tasks: label `good first issue`
@@ -65,5 +77,5 @@ Open / active:
 
 ## Current Execution Snapshot (2026-02-24)
 - Core `Now` and `Next` child queue is complete.
-- Remaining child work is primarily `#19` (live env evidence) and `#28` (research follow-on).
-- Gate D expansion (`#19`) is code-complete but blocked on live testnet endpoint secrets for final acceptance evidence.
+- Follow-on child tranche (`#29`-`#42`) is created across control-plane, RPC, submit, Gate D, simulation, WASM, security, and research tracks.
+- Previous blockers `#19` and `#28` are now closed (live Gate D evidence + invariant probe/gate integration completed).
