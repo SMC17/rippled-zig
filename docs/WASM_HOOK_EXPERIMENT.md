@@ -46,10 +46,30 @@ Basic checks:
 2. File is non-empty
 3. Build exited with code `0`
 
-Optional export inspection (if tool available):
+Contractized export smoke check (recommended):
+```bash
+scripts/wasm/check_hook_exports.sh zig-out/wasm/hook_template.wasm artifacts/wasm-hook-export-check
+```
+
+This emits:
+- `artifacts/wasm-hook-export-check/hook-wasm-export-check.json`
+
+Optional manual export inspection (if tool available):
 ```bash
 wasm-objdump -x zig-out/wasm/hook_template.wasm | rg 'hook|cbak'
 ```
+
+## Export Check Scope Boundary
+
+The local checker verifies only:
+- WASM artifact exists and is non-empty
+- expected export name `hook` is present
+- optional export name `cbak` presence is reported
+
+It does **not** verify:
+- XRPL Hooks ABI/import compatibility
+- host function availability
+- runtime semantics inside a Hooks VM
 
 ## Runtime Constraints (Current State)
 

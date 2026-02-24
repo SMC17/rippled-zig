@@ -51,6 +51,11 @@ jobs:
         test -f zig-out/wasm/protocol_kernel.wasm
         test -f zig-out/wasm/hook_template.wasm
 
+    - name: Hook WASM export smoke check
+      run: |
+        chmod +x scripts/wasm/check_hook_exports.sh
+        scripts/wasm/check_hook_exports.sh zig-out/wasm/hook_template.wasm artifacts/wasm-hook-export-check
+
   release-provenance:
     name: Release checksum provenance
     runs-on: ubuntu-latest

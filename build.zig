@@ -205,6 +205,7 @@ pub fn build(b: *std.Build) void {
         .root_module = hook_module,
     });
     hook_exe.entry = .disabled;
+    hook_exe.rdynamic = true; // Preserve exported hook entry points in wasm output.
     const hook_install = b.addInstallArtifact(hook_exe, .{
         .dest_dir = .{ .override = .{ .custom = "wasm" } },
     });

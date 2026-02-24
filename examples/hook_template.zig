@@ -9,14 +9,14 @@
 
 /// Required hook entry point - called for each transaction.
 /// Return 0 to accept, non-zero to reject/rollback.
-export fn hook(reserved: u32) i64 {
+pub export fn hook(reserved: u32) i64 {
     _ = reserved;
     // Minimal pass-through: accept all transactions
     return 0;
 }
 
 /// Optional callback for emitted transaction status
-export fn cbak(what: u32) i64 {
+pub export fn cbak(what: u32) i64 {
     _ = what;
     return 0;
 }
