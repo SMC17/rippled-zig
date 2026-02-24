@@ -311,6 +311,33 @@ cat > "$artifact_dir/testnet-conformance.json" <<JSON
 }
 JSON
 
+if ! jq -e '
+  .gate == "D" and
+  (.status | type == "string") and
+  (.profile | type == "string") and
+  (.timestamp_utc | type == "string") and
+  (.thresholds | type == "object") and
+  (.observed | type == "object") and
+  (.observed.method_status | type == "object") and
+  (.observed.latency_s | type == "object") and
+  (.observed.method_status.server_info | type == "string") and
+  (.observed.method_status.fee | type == "string") and
+  (.observed.method_status.ping | type == "string") and
+  (.observed.method_status.ledger_current | type == "string") and
+  (.observed.method_status.account_info_positive | type == "string") and
+  (.observed.method_status.ledger | type == "string") and
+  (.observed.latency_s.server_info | type == "number") and
+  (.observed.latency_s.fee | type == "number") and
+  (.observed.latency_s.ping | type == "number") and
+  (.observed.latency_s.ledger_current | type == "number") and
+  (.observed.latency_s.ledger | type == "number") and
+  (.observed.latency_s.account_info_positive | type == "number") and
+  (.observed.latency_s.account_info_negative | type == "number") and
+  (.observed.latency_s.submit_negative | type == "number")
+' "$artifact_dir/testnet-conformance.json" >/dev/null; then
+  fail "Malformed Gate D artifact output: testnet-conformance.json"
+fi
+
 cat > "$artifact_dir/trend-point.json" <<JSON
 {
   "timestamp_utc": "$ts_iso",
@@ -337,6 +364,28 @@ cat > "$artifact_dir/trend-point.json" <<JSON
 }
 JSON
 
+if ! jq -e '
+  (.timestamp_utc | type == "string") and
+  (.profile | type == "string") and
+  (.status | type == "string") and
+  (.validated_ledger_seq | type == "number") and
+  (.ledger_current_index | type == "number") and
+  (.base_fee | type == "number") and
+  (.method_status | type == "object") and
+  (.latency_s | type == "object") and
+  (.method_status.ping | type == "string") and
+  (.method_status.ledger_current | type == "string") and
+  (.method_status.account_info_positive | type == "string") and
+  (.latency_s.server_info | type == "number") and
+  (.latency_s.fee | type == "number") and
+  (.latency_s.ping | type == "number") and
+  (.latency_s.ledger_current | type == "number") and
+  (.latency_s.ledger | type == "number") and
+  (.latency_s.account_info_positive | type == "number")
+' "$artifact_dir/trend-point.json" >/dev/null; then
+  fail "Malformed Gate D artifact output: trend-point.json"
+fi
+
 if [[ -n "${GATE_D_TREND_INPUT_DIR:-}" ]]; then
   scripts/gates/gate_d_trend_merge.sh \
     "$GATE_D_TREND_INPUT_DIR" \
@@ -347,6 +396,7 @@ if [[ -n "${GATE_D_TREND_INPUT_DIR:-}" ]]; then
   trend_max_p95_server_info="${GATE_D_TREND_MAX_P95_SERVER_INFO_S:-$max_latency_s}"
   trend_max_p95_fee="${GATE_D_TREND_MAX_P95_FEE_S:-$max_latency_s}"
   trend_max_p95_ledger="${GATE_D_TREND_MAX_P95_LEDGER_S:-$max_latency_s}"
+  trend_max_p95_account_info_positive="${GATE_D_TREND_MAX_P95_ACCOUNT_INFO_POSITIVE_S:-$max_latency_s}"
 
   trend_status="$(jq -r '.status // "unknown"' "$artifact_dir/trend-summary-7d.json")"
   if [[ "$trend_status" == "ok" ]]; then
@@ -354,6 +404,7 @@ if [[ -n "${GATE_D_TREND_INPUT_DIR:-}" ]]; then
     p95_server_info="$(jq -r '.summary.p95_latency_s.server_info' "$artifact_dir/trend-summary-7d.json")"
     p95_fee="$(jq -r '.summary.p95_latency_s.fee' "$artifact_dir/trend-summary-7d.json")"
     p95_ledger="$(jq -r '.summary.p95_latency_s.ledger' "$artifact_dir/trend-summary-7d.json")"
+    p95_account_info_positive="$(jq -r '.summary.p95_latency_s.account_info_positive' "$artifact_dir/trend-summary-7d.json")"
 
     if ! awk -v got="$success_rate" -v min="$trend_min_success_rate" 'BEGIN { exit !(got+0 >= min+0) }'; then
       fail "Gate D trend success_rate below threshold: ${success_rate}% < ${trend_min_success_rate}%"
@@ -366,6 +417,11 @@ if [[ -n "${GATE_D_TREND_INPUT_DIR:-}" ]]; then
     fi
     if ! awk -v got="$p95_ledger" -v max="$trend_max_p95_ledger" 'BEGIN { exit !(got+0 <= max+0) }'; then
       fail "Gate D trend p95 ledger latency above threshold: ${p95_ledger}s > ${trend_max_p95_ledger}s"
+    fi
+    if [[ "$p95_account_info_positive" != "null" ]]; then
+      if ! awk -v got="$p95_account_info_positive" -v max="$trend_max_p95_account_info_positive" 'BEGIN { exit !(got+0 <= max+0) }'; then
+        fail "Gate D trend p95 account_info_positive latency above threshold: ${p95_account_info_positive}s > ${trend_max_p95_account_info_positive}s"
+      fi
     fi
   fi
 fi

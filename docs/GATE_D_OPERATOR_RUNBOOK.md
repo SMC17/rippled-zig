@@ -11,6 +11,7 @@ Gate D validates:
 - live `account_info` positive response using fixture-backed account selection
 - negative contracts (`account_info`, `submit`)
 - method-level latency thresholds
+- deterministic schema contracts for Gate D output artifacts (`testnet-conformance.json`, `trend-point.json`)
 - trend-point output for rolling summaries
 
 ## Required Environment
@@ -25,6 +26,7 @@ Optional:
 - `GATE_D_EXPECTED_NETWORK_ID`
 - `GATE_D_TREND_INPUT_DIR` (for rolling trend merge)
 - `GATE_D_ACCOUNT_INFO_FIXTURE` (defaults to `test_data/gate_d_account_info_fixture.json`)
+- `GATE_D_TREND_MAX_P95_ACCOUNT_INFO_POSITIVE_S` (defaults to `GATE_D_MAX_LATENCY_S`)
 
 ## How To Get Testnet URLs
 Use one of these sources:
@@ -65,6 +67,7 @@ Minimum operating discipline:
 - Investigate any consecutive failures before changing thresholds.
 - Treat threshold changes as reviewed policy updates, not ad hoc fixes.
 - Trend summaries now include latency metrics for `ping` and `ledger_current` (in addition to `server_info`, `fee`, `ledger`) when present in source artifacts.
+- Trend summaries and thresholds now also include `account_info_positive` latency when present in source artifacts.
 - `account_info` positive checks use a repo-pinned fixture account (`test_data/gate_d_account_info_fixture.json`) to avoid ad hoc account selection drift.
 
 ## Secrets Handling and Rotation
@@ -128,6 +131,7 @@ When to rotate:
 - positive `account_info` payload present and contract checks passed (`account_info_positive.json`)
 - negative payloads present for `account_info` and `submit`
 - thresholds and observed values are captured in artifact JSON
+- Gate D output artifact schema checks passed (script fails fast on malformed `testnet-conformance.json` / `trend-point.json`)
 
 ## Contributor Handoff (No Verbal Handoff Required)
 Use this sequence:

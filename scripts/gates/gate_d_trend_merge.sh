@@ -94,6 +94,10 @@ jq -n \
           ledger_current: (
             ($p_tail | map(.latency_s.ledger_current | to_num) | map(select(. != null))) as $vals |
             if ($vals | length) == 0 then null else (($vals | add) / ($vals | length)) end
+          ),
+          account_info_positive: (
+            ($p_tail | map(.latency_s.account_info_positive | to_num) | map(select(. != null))) as $vals |
+            if ($vals | length) == 0 then null else (($vals | add) / ($vals | length)) end
           )
         }
         end
@@ -105,7 +109,8 @@ jq -n \
           fee: p95($p_tail | map(.latency_s.fee)),
           ledger: p95($p_tail | map(.latency_s.ledger)),
           ping: p95($p_tail | map(.latency_s.ping)),
-          ledger_current: p95($p_tail | map(.latency_s.ledger_current))
+          ledger_current: p95($p_tail | map(.latency_s.ledger_current)),
+          account_info_positive: p95($p_tail | map(.latency_s.account_info_positive))
         }
         end
       ),
