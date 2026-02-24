@@ -158,6 +158,8 @@ export TESTNET_WS_URL="wss://s.altnet.rippletest.net:51233/"
 scripts/gates/gate_d.sh artifacts/gate-d-live
 ```
 
+Operator setup/cadence/troubleshooting: `docs/GATE_D_OPERATOR_RUNBOOK.md`
+
 ## Security Warning
 
 **IMPORTANT**: This is experimental software.

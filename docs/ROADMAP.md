@@ -41,6 +41,7 @@ Canonical companion docs:
 - Run Gate D regularly with testnet endpoints.
 - Track latency and success-rate trends over rolling windows.
 - Fail fast on contract drift between local and live behaviors.
+- Operator runbook: `docs/GATE_D_OPERATOR_RUNBOOK.md` (secrets, cadence, troubleshooting).
 
 ## Near-Term Deliverables
 1. Add richer submit contract tiers beyond minimal payment shape.

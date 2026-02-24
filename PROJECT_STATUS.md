@@ -72,6 +72,7 @@ Pass Criteria:
 Pass Criteria:
 - `scripts/gates/gate_d.sh` exits 0 with `TESTNET_RPC_URL` and `TESTNET_WS_URL` set.
 - Live ledger and fee fields validated from testnet responses.
+- Operator setup/cadence/troubleshooting follows `docs/GATE_D_OPERATOR_RUNBOOK.md`.
 
 ### Gate E: Security
 Pass Criteria:
