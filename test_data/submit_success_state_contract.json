@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "rpc_method": "submit",
+  "tx_type": "payment",
+  "fixture": "minimal_local_payment_submit",
+  "expected_state_effects": {
+    "sender_sequence_delta": 1,
+    "sender_balance_delta_drops": -1000010,
+    "destination_balance_delta_drops": 1000000
+  }
+}

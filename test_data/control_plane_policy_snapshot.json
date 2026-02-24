@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "component": "control_plane_policy",
+  "profiles": {
+    "research": {
+      "method_policy": "allow_all",
+      "allowlist": ["*"],
+      "denylist": []
+    },
+    "production": {
+      "method_policy": "allowlist",
+      "allowlist": [
+        "account_info",
+        "agent_config_get",
+        "agent_status",
+        "fee",
+        "ledger",
+        "ledger_current",
+        "ping",
+        "server_info"
+      ],
+      "denylist_examples": [
+        "submit",
+        "agent_config_set",
+        "random"
+      ]
+    }
+  },
+  "mutable_config_keys": [
+    {
+      "key": "profile",
+      "type": "enum",
+      "allowed_values": ["research", "production"]
+    },
+    {
+      "key": "max_peers",
+      "type": "u32",
+      "range": {"min": 5, "max": 200}
+    },
+    {
+      "key": "fee_multiplier",
+      "type": "u32",
+      "range": {"min": 1, "max": 100},
+      "production_max": 5
+    },
+    {
+      "key": "strict_crypto_required",
+      "type": "bool",
+      "production_required": true
+    },
+    {
+      "key": "allow_unl_updates",
+      "type": "bool",
+      "production_required": false
+    }
+  ],
+  "production_invariants": {
+    "strict_crypto_required": true,
+    "allow_unl_updates": false,
+    "fee_multiplier_max": 5,
+    "max_peers_max": 100
+  }
+}

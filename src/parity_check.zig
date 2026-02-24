@@ -610,6 +610,33 @@ fn assertAccountInfoLocal(payload: []const u8, allocator: std.mem.Allocator) !vo
     if (!validated) return error.UnexpectedValidatedFlag;
 }
 
+fn assertSubmitSuccessStateContract(
+    before_sender: types.AccountRoot,
+    after_sender: types.AccountRoot,
+    before_destination: types.AccountRoot,
+    after_destination: types.AccountRoot,
+    contract_payload: []const u8,
+    allocator: std.mem.Allocator,
+) !void {
+    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, contract_payload, .{});
+    defer parsed.deinit();
+
+    const root = try getObject(parsed.value);
+    const expected = try getObject(try getField(root, "expected_state_effects"));
+
+    const sender_seq_delta = try getInteger(try getField(expected, "sender_sequence_delta"));
+    const sender_balance_delta = try getInteger(try getField(expected, "sender_balance_delta_drops"));
+    const destination_balance_delta = try getInteger(try getField(expected, "destination_balance_delta_drops"));
+
+    const actual_sender_seq_delta = @as(i64, @intCast(after_sender.sequence)) - @as(i64, @intCast(before_sender.sequence));
+    const actual_sender_balance_delta = @as(i64, @intCast(after_sender.balance)) - @as(i64, @intCast(before_sender.balance));
+    const actual_destination_balance_delta = @as(i64, @intCast(after_destination.balance)) - @as(i64, @intCast(before_destination.balance));
+
+    if (actual_sender_seq_delta != sender_seq_delta) return error.RpcContractMismatch;
+    if (actual_sender_balance_delta != sender_balance_delta) return error.RpcContractMismatch;
+    if (actual_destination_balance_delta != destination_balance_delta) return error.RpcContractMismatch;
+}
+
 fn assertServerInfoLocal(payload: []const u8, allocator: std.mem.Allocator) !void {
     var parsed = try std.json.parseFromSlice(std.json.Value, allocator, payload, .{});
     defer parsed.deinit();
@@ -1090,6 +1117,9 @@ pub fn main() !void {
     var rpc_server = rpc.RpcServer.init(allocator, 5005, &lm, &state, &processor);
     defer rpc_server.deinit();
 
+    const before_submit_sender = state.getAccount(account).?;
+    const before_submit_destination = state.getAccount(destination).?;
+
     const account_info = try methods.accountInfo(account);
     defer allocator.free(account_info);
     try assertAccountInfoLocal(account_info, allocator);
@@ -1111,6 +1141,8 @@ pub fn main() !void {
     defer allocator.free(submit_blob);
     const submit = try methods.submit(submit_blob);
     defer allocator.free(submit);
+    const after_submit_sender = state.getAccount(account).?;
+    const after_submit_destination = state.getAccount(destination).?;
     const ping = try methods.ping();
     defer allocator.free(ping);
     const ledger_current = try methods.ledgerCurrent();
@@ -1132,6 +1164,8 @@ pub fn main() !void {
     defer allocator.free(fixture_rpc_live_methods_schema);
     const fixture_rpc_live_negative_schema = try std.fs.cwd().readFileAlloc(allocator, "test_data/rpc_live_negative_schema.json", 256 * 1024);
     defer allocator.free(fixture_rpc_live_negative_schema);
+    const fixture_submit_success_contract = try std.fs.cwd().readFileAlloc(allocator, "test_data/submit_success_state_contract.json", 256 * 1024);
+    defer allocator.free(fixture_submit_success_contract);
 
     try assertServerFixture(fixture_server, allocator, fixture);
     try assertFeeFixture(fixture_fee, allocator, fixture);
@@ -1144,4 +1178,12 @@ pub fn main() !void {
     try assertAgentConfigGetSchema(agent_config_get, fixture_agent_config_schema, allocator);
     try assertRpcLiveMethodsContracts(server_info, fee, ledger_info, account_info, submit, ping, ledger_current, fixture_rpc_live_methods_schema, allocator);
     try assertRpcLiveNegativeContracts(&rpc_server, fixture_rpc_live_negative_schema, allocator);
+    try assertSubmitSuccessStateContract(
+        before_submit_sender,
+        after_submit_sender,
+        before_submit_destination,
+        after_submit_destination,
+        fixture_submit_success_contract,
+        allocator,
+    );
 }

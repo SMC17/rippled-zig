@@ -807,6 +807,56 @@ test "ledger_current rejects params deterministically" {
     try std.testing.expect(std.mem.indexOf(u8, array_params, "ledger_current does not accept params") != null);
 }
 
+test "submit success mutates sender and destination state deterministically" {
+    const allocator = std.testing.allocator;
+    var lm = try ledger.LedgerManager.init(allocator);
+    defer lm.deinit();
+    var state = ledger.AccountState.init(allocator);
+    defer state.deinit();
+    var processor = try transaction.TransactionProcessor.init(allocator);
+    defer processor.deinit();
+
+    const sender = [_]u8{1} ** 20;
+    const destination = [_]u8{2} ** 20;
+    try state.putAccount(.{
+        .account = sender,
+        .balance = 123 * 1_000_000,
+        .flags = .{},
+        .owner_count = 0,
+        .previous_txn_id = [_]u8{0} ** 32,
+        .previous_txn_lgr_seq = 1,
+        .sequence = 7,
+    });
+    try state.putAccount(.{
+        .account = destination,
+        .balance = 3 * 1_000_000,
+        .flags = .{},
+        .owner_count = 0,
+        .previous_txn_id = [_]u8{0} ** 32,
+        .previous_txn_lgr_seq = 1,
+        .sequence = 1,
+    });
+
+    var server = RpcServer.init(allocator, 5005, &lm, &state, &processor);
+    defer server.deinit();
+
+    const before_sender = state.getAccount(sender).?;
+    const before_destination = state.getAccount(destination).?;
+
+    const submit_req =
+        "{\"method\":\"submit\",\"params\":{\"tx_blob\":\"00000101010101010101010101010101010101010101000000000000000A00000007020202020202020202020202020202020202020200000000000F4240\"}}";
+    const submit_resp = try server.handleJsonRpc(submit_req);
+    defer allocator.free(submit_resp);
+    try std.testing.expect(std.mem.indexOf(u8, submit_resp, "\"engine_result\": \"tesSUCCESS\"") != null);
+
+    const after_sender = state.getAccount(sender).?;
+    const after_destination = state.getAccount(destination).?;
+
+    try std.testing.expectEqual(@as(u32, before_sender.sequence + 1), after_sender.sequence);
+    try std.testing.expectEqual(@as(u64, before_sender.balance - 10 - 1_000_000), after_sender.balance);
+    try std.testing.expectEqual(@as(u64, before_destination.balance + 1_000_000), after_destination.balance);
+}
+
 test "json-rpc profile policy blocks unsafe production transitions" {
     const allocator = std.testing.allocator;
     var lm = try ledger.LedgerManager.init(allocator);

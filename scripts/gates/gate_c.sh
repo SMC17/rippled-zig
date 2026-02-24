@@ -159,6 +159,33 @@ jq -e '.expected_values.fee_multiplier == 1' test_data/agent_config_schema.json 
 jq -e '.expected_values.strict_crypto_required == true' test_data/agent_config_schema.json > /dev/null
 jq -e '.expected_values.allow_unl_updates == false' test_data/agent_config_schema.json > /dev/null
 
+# Control-plane policy snapshot drift detection (generated from live policy code).
+zig build control-plane-policy-snapshot -- "$artifact_dir/control-plane-policy-snapshot.json" >/dev/null
+jq -e '.schema_version == 1' test_data/control_plane_policy_snapshot.json > /dev/null
+jq -e '.component == "control_plane_policy"' test_data/control_plane_policy_snapshot.json > /dev/null
+if ! diff -u \
+  <(jq -S . test_data/control_plane_policy_snapshot.json) \
+  <(jq -S . "$artifact_dir/control-plane-policy-snapshot.json") \
+  > "$artifact_dir/control-plane-policy-snapshot.diff"; then
+  echo "Control-plane policy snapshot drift detected; review and update test_data/control_plane_policy_snapshot.json" >&2
+  exit 1
+fi
+
+# Fixture contract for Gate D fixture-backed positive account_info live check.
+jq -e '.schema_version == 1' test_data/gate_d_account_info_fixture.json > /dev/null
+jq -e '.rpc_method == "account_info"' test_data/gate_d_account_info_fixture.json > /dev/null
+jq -e '(.account | type) == "string" and (.account | startswith("r"))' test_data/gate_d_account_info_fixture.json > /dev/null
+jq -e '.required_account_data_fields == ["Account","Balance","Flags","OwnerCount","Sequence"]' test_data/gate_d_account_info_fixture.json > /dev/null
+jq -e '.source.path == "test_data/current_ledger.json"' test_data/gate_d_account_info_fixture.json > /dev/null
+
+# Submit success-state contract (Gate C local parity path).
+jq -e '.schema_version == 1' test_data/submit_success_state_contract.json > /dev/null
+jq -e '.rpc_method == "submit"' test_data/submit_success_state_contract.json > /dev/null
+jq -e '.tx_type == "payment"' test_data/submit_success_state_contract.json > /dev/null
+jq -e '.expected_state_effects.sender_sequence_delta == 1' test_data/submit_success_state_contract.json > /dev/null
+jq -e '.expected_state_effects.sender_balance_delta_drops == -1000010' test_data/submit_success_state_contract.json > /dev/null
+jq -e '.expected_state_effects.destination_balance_delta_drops == 1000000' test_data/submit_success_state_contract.json > /dev/null
+
 # Deterministic offline schema fixture checks for newly live JSON-RPC methods.
 jq -e '.schema_version == 1' test_data/rpc_live_methods_schema.json > /dev/null
 jq -e '.methods.server_info.required_fields == ["result"]' test_data/rpc_live_methods_schema.json > /dev/null
@@ -246,6 +273,7 @@ cat > "$artifact_dir/parity-report.json" <<JSON
     "snapshot-ledger-value-level-fields",
     "agent-status-schema-stability",
     "agent-config-schema-stability",
+    "control-plane-policy-snapshot-stability",
     "rpc-live-method-schema-stability",
     "rpc-live-negative-schema-stability",
     "snapshot-validated-ledger-seq-hash",

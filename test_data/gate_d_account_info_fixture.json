@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "rpc_method": "account_info",
+  "account": "rPickFLAKK7YkMwKvhSEN1yJAtfnB6qRJc",
+  "source": {
+    "type": "snapshot",
+    "path": "test_data/current_ledger.json",
+    "field": "result.ledger.transactions[0].Account"
+  },
+  "required_account_data_fields": [
+    "Account",
+    "Balance",
+    "Flags",
+    "OwnerCount",
+    "Sequence"
+  ]
+}

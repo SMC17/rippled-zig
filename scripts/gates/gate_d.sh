@@ -12,6 +12,7 @@ expected_network_id="${GATE_D_EXPECTED_NETWORK_ID:-1}"
 max_base_fee="${GATE_D_MAX_BASE_FEE:-100000}"
 min_base_fee="${GATE_D_MIN_BASE_FEE:-10}"
 run_profile="${GATE_D_PROFILE:-default}"
+account_info_fixture_file="${GATE_D_ACCOUNT_INFO_FIXTURE:-test_data/gate_d_account_info_fixture.json}"
 ts_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 fail() {
@@ -59,6 +60,18 @@ for cmd in curl jq awk; do
   fi
 done
 
+if [[ ! -f "$account_info_fixture_file" ]]; then
+  fail "Missing Gate D account_info fixture: $account_info_fixture_file"
+fi
+if ! jq -e '.schema_version == 1 and (.account | type == "string") and (.required_account_data_fields | type == "array")' "$account_info_fixture_file" >/dev/null; then
+  fail "Invalid Gate D account_info fixture schema: $account_info_fixture_file"
+fi
+
+account_info_positive_account="$(jq -r '.account' "$account_info_fixture_file")"
+if [[ -z "$account_info_positive_account" || "$account_info_positive_account" == "null" ]]; then
+  fail "Gate D account_info fixture missing account value"
+fi
+
 post_json() {
   local payload="$1"
   local out_file="$2"
@@ -95,6 +108,8 @@ post_json '{"method":"server_info"}' "$artifact_dir/server_info.json" "$artifact
 post_json '{"method":"fee"}' "$artifact_dir/fee.json" "$artifact_dir/fee.metrics"
 post_json '{"method":"ping"}' "$artifact_dir/ping.json" "$artifact_dir/ping.metrics"
 post_json '{"method":"ledger_current"}' "$artifact_dir/ledger_current.json" "$artifact_dir/ledger_current.metrics"
+account_info_positive_payload="$(jq -nc --arg acct "$account_info_positive_account" '{method:"account_info", params:[{account:$acct}]}' )"
+post_json "$account_info_positive_payload" "$artifact_dir/account_info_positive.json" "$artifact_dir/account_info_positive.metrics"
 post_json '{"method":"account_info","params":[{"account":"invalid"}]}' "$artifact_dir/account_info_negative.json" "$artifact_dir/account_info_negative.metrics"
 post_json '{"method":"submit","params":[{}]}' "$artifact_dir/submit_negative.json" "$artifact_dir/submit_negative.metrics"
 
@@ -109,6 +124,7 @@ ping_status="$(jq -r '.result.status // .status // "unknown"' "$artifact_dir/pin
 ping_role="$(jq -r '.result.role // empty' "$artifact_dir/ping.json")"
 ledger_current_status="$(jq -r '.result.status // .status // "unknown"' "$artifact_dir/ledger_current.json")"
 ledger_current_index="$(jq -r '.result.ledger_current_index // empty' "$artifact_dir/ledger_current.json")"
+account_info_pos_status="$(jq -r '.result.status // .status // "unknown"' "$artifact_dir/account_info_positive.json")"
 account_info_neg_status="$(jq -r '.result.status // .status // "unknown"' "$artifact_dir/account_info_negative.json")"
 account_info_neg_error="$(jq -r '.result.error // .error // empty' "$artifact_dir/account_info_negative.json")"
 submit_neg_status="$(jq -r '.result.status // .status // "unknown"' "$artifact_dir/submit_negative.json")"
@@ -179,6 +195,13 @@ if (( ledger_current_index < validated_seq )); then
   fail "ledger_current_index behind validated_seq: $ledger_current_index < $validated_seq"
 fi
 
+if [[ "$account_info_pos_status" != "success" ]]; then
+  fail "account_info positive contract expected status=success, got: $account_info_pos_status"
+fi
+if ! jq -e '.result.account_data.Account != null and .result.account_data.Balance != null and .result.account_data.Sequence != null' "$artifact_dir/account_info_positive.json" >/dev/null; then
+  fail "account_info positive contract missing required account_data fields"
+fi
+
 if (( base_fee < min_base_fee || base_fee > max_base_fee )); then
   fail "base_fee outside threshold: $base_fee (expected $min_base_fee..$max_base_fee)"
 fi
@@ -229,6 +252,7 @@ fee_latency="$(awk '{print $2}' "$artifact_dir/fee.metrics")"
 ping_latency="$(awk '{print $2}' "$artifact_dir/ping.metrics")"
 ledger_current_latency="$(awk '{print $2}' "$artifact_dir/ledger_current.metrics")"
 ledger_latency="$(awk '{print $2}' "$artifact_dir/ledger.metrics")"
+account_info_positive_latency="$(awk '{print $2}' "$artifact_dir/account_info_positive.metrics")"
 account_info_negative_latency="$(awk '{print $2}' "$artifact_dir/account_info_negative.metrics")"
 submit_negative_latency="$(awk '{print $2}' "$artifact_dir/submit_negative.metrics")"
 
@@ -264,6 +288,7 @@ cat > "$artifact_dir/testnet-conformance.json" <<JSON
       "fee": "$fee_status",
       "ping": "$ping_status",
       "ledger_current": "$ledger_current_status",
+      "account_info_positive": "$account_info_pos_status",
       "ledger": "$ledger_status"
     },
     "negative_contracts": {
@@ -278,6 +303,7 @@ cat > "$artifact_dir/testnet-conformance.json" <<JSON
       "ping": $ping_latency,
       "ledger_current": $ledger_current_latency,
       "ledger": $ledger_latency,
+      "account_info_positive": $account_info_positive_latency,
       "account_info_negative": $account_info_negative_latency,
       "submit_negative": $submit_negative_latency
     }
@@ -295,7 +321,8 @@ cat > "$artifact_dir/trend-point.json" <<JSON
   "base_fee": $base_fee,
   "method_status": {
     "ping": "$ping_status",
-    "ledger_current": "$ledger_current_status"
+    "ledger_current": "$ledger_current_status",
+    "account_info_positive": "$account_info_pos_status"
   },
   "latency_s": {
     "server_info": $server_latency,
@@ -303,6 +330,7 @@ cat > "$artifact_dir/trend-point.json" <<JSON
     "ping": $ping_latency,
     "ledger_current": $ledger_current_latency,
     "ledger": $ledger_latency,
+    "account_info_positive": $account_info_positive_latency,
     "account_info_negative": $account_info_negative_latency,
     "submit_negative": $submit_negative_latency
   }

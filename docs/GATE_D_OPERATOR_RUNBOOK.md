@@ -8,6 +8,7 @@ Run Gate D consistently and produce decision-grade artifacts for live XRPL testn
 Gate D validates:
 - endpoint reachability (`https` RPC + `wss` WebSocket URL shape)
 - live `server_info`, `fee`, `ledger` responses
+- live `account_info` positive response using fixture-backed account selection
 - negative contracts (`account_info`, `submit`)
 - method-level latency thresholds
 - trend-point output for rolling summaries
@@ -23,6 +24,7 @@ Optional:
 - `GATE_D_MIN_LEDGER_SEQ`
 - `GATE_D_EXPECTED_NETWORK_ID`
 - `GATE_D_TREND_INPUT_DIR` (for rolling trend merge)
+- `GATE_D_ACCOUNT_INFO_FIXTURE` (defaults to `test_data/gate_d_account_info_fixture.json`)
 
 ## How To Get Testnet URLs
 Use one of these sources:
@@ -49,7 +51,7 @@ scripts/gates/gate_d.sh artifacts/gate-d-live
 Artifacts produced (key files):
 - `testnet-conformance.json`
 - `trend-point.json`
-- method payloads/metrics (`server_info.*`, `fee.*`, `ledger.*`, `ping.*`, `ledger_current.*`)
+- method payloads/metrics (`server_info.*`, `fee.*`, `ledger.*`, `ping.*`, `ledger_current.*`, `account_info_positive.*`)
 - negative payloads/metrics (`account_info_negative.*`, `submit_negative.*`)
 
 ## CI / Scheduled Run Cadence
@@ -63,6 +65,7 @@ Minimum operating discipline:
 - Investigate any consecutive failures before changing thresholds.
 - Treat threshold changes as reviewed policy updates, not ad hoc fixes.
 - Trend summaries now include latency metrics for `ping` and `ledger_current` (in addition to `server_info`, `fee`, `ledger`) when present in source artifacts.
+- `account_info` positive checks use a repo-pinned fixture account (`test_data/gate_d_account_info_fixture.json`) to avoid ad hoc account selection drift.
 
 ## Secrets Handling and Rotation
 Storage:
@@ -122,6 +125,7 @@ When to rotate:
 - `testnet-conformance.json` has `status: pass`
 - `trend-point.json` exists
 - method payloads present for `server_info`, `fee`, `ledger`, `ping`, `ledger_current`
+- positive `account_info` payload present and contract checks passed (`account_info_positive.json`)
 - negative payloads present for `account_info` and `submit`
 - thresholds and observed values are captured in artifact JSON
 

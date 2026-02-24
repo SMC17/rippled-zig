@@ -14,6 +14,7 @@ Primary implementation references:
 - `scripts/gates/gate_c.sh`
 - `test_data/agent_status_schema.json`
 - `test_data/agent_config_schema.json`
+- `test_data/control_plane_policy_snapshot.json`
 - `test_data/rpc_live_negative_schema.json`
 
 ## Profiles
@@ -90,6 +91,7 @@ Gate-backed enforcement paths:
 - Gate C fixtures/contracts:
   - `test_data/agent_status_schema.json`
   - `test_data/agent_config_schema.json`
+  - `test_data/control_plane_policy_snapshot.json` (generated from `src/rpc_methods.zig`)
   - `test_data/rpc_live_negative_schema.json` (`submit_blocked_in_production`, `agent_config_set_blocked_in_production`, `random_blocked_in_production`)
   - `scripts/gates/gate_c.sh`
   - production-profile positive allowlist coverage (read-safe methods remain callable):
@@ -97,6 +99,12 @@ Gate-backed enforcement paths:
     - `agent_config_get`
     - `server_info`
     - `ledger_current`
+
+## Policy Snapshot Artifact (Drift Detection)
+- Generator: `zig build control-plane-policy-snapshot -- <output-path>`
+- Gate C emits: `artifacts/.../control-plane-policy-snapshot.json`
+- Gate C performs canonical JSON diff against `test_data/control_plane_policy_snapshot.json`
+- Intentional policy changes require fixture regeneration + `test_data/fixture_manifest.sha256` refresh
 
 ## Operational Guidance
 1. Use `research` for all autonomous experimentation and mutation.

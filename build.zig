@@ -145,6 +145,33 @@ pub fn build(b: *std.Build) void {
     const consensus_exp_step = b.step("consensus-experiment", "Run parameterized consensus experiment harness");
     consensus_exp_step.dependOn(&run_consensus_exp.step);
 
+    // Control-plane policy snapshot (deterministic artifact generator)
+    const policy_snapshot_module = b.createModule(.{
+        .root_source_file = b.path("tools/control_plane_policy_snapshot.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    policy_snapshot_module.addOptions("build_options", build_options);
+    policy_snapshot_module.addImport("rpc_methods", b.createModule(.{
+        .root_source_file = b.path("src/rpc_methods.zig"),
+        .target = target,
+        .optimize = optimize,
+    }));
+    const policy_snapshot_exe = b.addExecutable(.{
+        .name = "control-plane-policy-snapshot",
+        .root_module = policy_snapshot_module,
+    });
+    policy_snapshot_exe.linkLibC();
+    if (use_secp256k1) {
+        policy_snapshot_exe.linkSystemLibrary("secp256k1");
+    }
+    const run_policy_snapshot = b.addRunArtifact(policy_snapshot_exe);
+    if (b.args) |args| {
+        run_policy_snapshot.addArgs(args);
+    }
+    const policy_snapshot_step = b.step("control-plane-policy-snapshot", "Emit deterministic control-plane policy snapshot JSON");
+    policy_snapshot_step.dependOn(&run_policy_snapshot.step);
+
     // WASM: Protocol kernel (hash/serialization subset)
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,

@@ -30,6 +30,17 @@ pub const RpcMethods = struct {
         payment: ?PaymentSubmitDetails = null,
     };
 
+    const production_allowed_methods = [_][]const u8{
+        "account_info",
+        "agent_config_get",
+        "agent_status",
+        "fee",
+        "ledger",
+        "ledger_current",
+        "ping",
+        "server_info",
+    };
+
     allocator: std.mem.Allocator,
     ledger_manager: *ledger.LedgerManager,
     account_state: *ledger.AccountState,
@@ -59,22 +70,89 @@ pub const RpcMethods = struct {
         return switch (self.agent_config.profile) {
             .research => true,
             .production => blk: {
-                const allowed = [_][]const u8{
-                    "server_info",
-                    "ledger",
-                    "ledger_current",
-                    "fee",
-                    "ping",
-                    "agent_status",
-                    "agent_config_get",
-                    "account_info",
-                };
-                for (allowed) |name| {
+                for (production_allowed_methods) |name| {
                     if (std.mem.eql(u8, method, name)) break :blk true;
                 }
                 break :blk false;
             },
         };
+    }
+
+    pub fn controlPlanePolicySnapshotJson(allocator: std.mem.Allocator) ![]u8 {
+        return std.fmt.allocPrint(allocator,
+            \\{{
+            \\  "schema_version": 1,
+            \\  "component": "control_plane_policy",
+            \\  "profiles": {{
+            \\    "research": {{
+            \\      "method_policy": "allow_all",
+            \\      "allowlist": ["*"],
+            \\      "denylist": []
+            \\    }},
+            \\    "production": {{
+            \\      "method_policy": "allowlist",
+            \\      "allowlist": [
+            \\        "{s}",
+            \\        "{s}",
+            \\        "{s}",
+            \\        "{s}",
+            \\        "{s}",
+            \\        "{s}",
+            \\        "{s}",
+            \\        "{s}"
+            \\      ],
+            \\      "denylist_examples": [
+            \\        "submit",
+            \\        "agent_config_set",
+            \\        "random"
+            \\      ]
+            \\    }}
+            \\  }},
+            \\  "mutable_config_keys": [
+            \\    {{
+            \\      "key": "profile",
+            \\      "type": "enum",
+            \\      "allowed_values": ["research", "production"]
+            \\    }},
+            \\    {{
+            \\      "key": "max_peers",
+            \\      "type": "u32",
+            \\      "range": {{"min": 5, "max": 200}}
+            \\    }},
+            \\    {{
+            \\      "key": "fee_multiplier",
+            \\      "type": "u32",
+            \\      "range": {{"min": 1, "max": 100}},
+            \\      "production_max": 5
+            \\    }},
+            \\    {{
+            \\      "key": "strict_crypto_required",
+            \\      "type": "bool",
+            \\      "production_required": true
+            \\    }},
+            \\    {{
+            \\      "key": "allow_unl_updates",
+            \\      "type": "bool",
+            \\      "production_required": false
+            \\    }}
+            \\  ],
+            \\  "production_invariants": {{
+            \\    "strict_crypto_required": true,
+            \\    "allow_unl_updates": false,
+            \\    "fee_multiplier_max": 5,
+            \\    "max_peers_max": 100
+            \\  }}
+            \\}}
+        , .{
+            production_allowed_methods[0],
+            production_allowed_methods[1],
+            production_allowed_methods[2],
+            production_allowed_methods[3],
+            production_allowed_methods[4],
+            production_allowed_methods[5],
+            production_allowed_methods[6],
+            production_allowed_methods[7],
+        });
     }
 
     /// account_info - Get information about an account
@@ -701,6 +779,20 @@ test "agent control config set/get and status" {
     defer allocator.free(status_res);
     try std.testing.expect(std.mem.indexOf(u8, status_res, "\"api_version\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, status_res, "\"max_peers\": 33") != null);
+}
+
+test "control-plane policy snapshot is deterministic and includes production allowlist" {
+    const allocator = std.testing.allocator;
+
+    const a = try RpcMethods.controlPlanePolicySnapshotJson(allocator);
+    defer allocator.free(a);
+    const b = try RpcMethods.controlPlanePolicySnapshotJson(allocator);
+    defer allocator.free(b);
+
+    try std.testing.expectEqualStrings(a, b);
+    try std.testing.expect(std.mem.indexOf(u8, a, "\"component\": \"control_plane_policy\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, a, "\"production\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, a, "\"submit\"") != null);
 }
 
 test "agent config set rejects unsupported key" {
