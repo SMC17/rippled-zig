@@ -92,6 +92,11 @@ Gate-backed enforcement paths:
   - `test_data/agent_config_schema.json`
   - `test_data/rpc_live_negative_schema.json` (`submit_blocked_in_production`, `agent_config_set_blocked_in_production`, `random_blocked_in_production`)
   - `scripts/gates/gate_c.sh`
+  - production-profile positive allowlist coverage (read-safe methods remain callable):
+    - `agent_status`
+    - `agent_config_get`
+    - `server_info`
+    - `ledger_current`
 
 ## Operational Guidance
 1. Use `research` for all autonomous experimentation and mutation.

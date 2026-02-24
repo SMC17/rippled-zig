@@ -502,6 +502,27 @@ fn assertRpcLiveNegativeContracts(server: *rpc.RpcServer, schema_payload: []cons
         defer allocator.free(blocked_snippet);
         if (std.mem.indexOf(u8, blocked_response, blocked_snippet) == null) return error.RpcContractMismatch;
     }
+
+    // Positive production-profile coverage: allowlisted read-safe methods must remain callable.
+    const production_allowed_cases = [_]struct {
+        request: []const u8,
+        required_snippet: []const u8,
+    }{
+        .{ .request = "{\"method\":\"agent_status\"}", .required_snippet = "\"status\": \"success\"" },
+        .{ .request = "{\"method\":\"agent_config_get\"}", .required_snippet = "\"profile\": \"production\"" },
+        .{ .request = "{\"method\":\"server_info\"}", .required_snippet = "\"server_state\"" },
+        .{ .request = "{\"method\":\"ledger_current\"}", .required_snippet = "\"ledger_current_index\"" },
+    };
+    for (production_allowed_cases) |allowed_case| {
+        const allowed_response = try server.handleJsonRpcRequest(allowed_case.request);
+        defer allocator.free(allowed_response);
+        if (std.mem.indexOf(u8, allowed_response, "\"Method blocked by profile policy\"") != null) {
+            return error.RpcContractMismatch;
+        }
+        if (std.mem.indexOf(u8, allowed_response, allowed_case.required_snippet) == null) {
+            return error.RpcContractMismatch;
+        }
+    }
 }
 
 fn makeMinimalSubmitBlob(
