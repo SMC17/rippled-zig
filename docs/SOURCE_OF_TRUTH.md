@@ -12,6 +12,7 @@
 | [`docs/CONTROL_PLANE_POLICY.md`](CONTROL_PLANE_POLICY.md) | Profile policy, method allowlist, agent control surface |
 | [`docs/AGENT_AUTOMATION_POLICY.md`](AGENT_AUTOMATION_POLICY.md) | Least-privilege agent automation checklist (repo/runtime/release boundaries) |
 | [`docs/RELEASE_SIGNING_POLICY.md`](RELEASE_SIGNING_POLICY.md) | Signed release artifact policy and verifier procedure |
+| [`docs/WASM_HOOK_EXPERIMENT.md`](WASM_HOOK_EXPERIMENT.md) | Minimal hooks-oriented WASM experiment build/run boundaries |
 | [`docs/ROADMAP.md`](ROADMAP.md) | Milestones and execution track |
 | [`docs/ROADMAP_TO_PARITY.md`](ROADMAP_TO_PARITY.md) | Parity claim levels and workstreams |
 

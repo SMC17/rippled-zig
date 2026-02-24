@@ -160,6 +160,9 @@ scripts/gates/gate_d.sh artifacts/gate-d-live
 
 Operator setup/cadence/troubleshooting: `docs/GATE_D_OPERATOR_RUNBOOK.md`
 
+WASM hook experiment (minimal, non-production):
+- `docs/WASM_HOOK_EXPERIMENT.md`
+
 ## Security Warning
 
 **IMPORTANT**: This is experimental software.
