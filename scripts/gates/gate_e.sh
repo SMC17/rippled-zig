@@ -116,7 +116,7 @@ cat > "$artifact_dir/security-review.md" <<MD
 
 - Runtime safety disabled sites: 0
 - panic() call sites in src: $panic_count
-- security TODO/FIXME findings in `src/security*.zig`: 0
+- security TODO/FIXME findings in src/security*.zig: 0
 - gate runtime: ${elapsed_s}s (max ${max_runtime_s}s)
 - fuzz profile: ${fuzz_profile}
 - fuzz cases executed: ${fuzz_cases} (min ${min_fuzz_cases})
@@ -169,6 +169,28 @@ cat > "$artifact_dir/security-metrics.json" <<JSON
 }
 JSON
 
+# Deterministic artifact contract checks: security-metrics.json
+if ! jq -e '
+  .gate == "E" and
+  (.status | type == "string") and
+  (.timestamp_utc | type == "string") and
+  (.profile | type == "string") and
+  (.thresholds | type == "object") and
+  (.observed | type == "object") and
+  (.timings_s | type == "object") and
+  (.thresholds.min_fuzz_cases | type == "number") and
+  (.thresholds.max_runtime_s | type == "number") and
+  (.observed.fuzz_cases | type == "number") and
+  (.observed.corpus_seeds | type == "number") and
+  ((.observed.crash_free | type == "number") or (.observed.crash_free | type == "string")) and
+  (.observed.panic_sites | type == "number") and
+  (.observed.runtime_s | type == "number") and
+  (.timings_s.total | type == "number")
+' "$artifact_dir/security-metrics.json" >/dev/null; then
+  echo "Invalid Gate E artifact schema: security-metrics.json" | tee "$artifact_dir/failure.txt"
+  exit 1
+fi
+
 cat > "$artifact_dir/timings.json" <<JSON
 {
   "gate": "E",
@@ -194,6 +216,28 @@ if [[ -n "${GATE_E_TREND_INPUT_DIR:-}" ]]; then
   trend_min_avg_fuzz_cases="${GATE_E_TREND_MIN_AVG_FUZZ_CASES:-$min_fuzz_cases}"
 
   trend_status="$(jq -r '.status // "unknown"' "$artifact_dir/security-trend-summary-7d.json")"
+
+  # Deterministic artifact contract checks: security-trend-summary-7d.json
+  if ! jq -e '
+    (.status == "no-data") or
+    (
+      .status == "ok" and
+      (.input_dir | type == "string") and
+      (.window | type == "string") and
+      (.points_considered | type == "number") and
+      (.summary | type == "object") and
+      (.summary.success_rate == null or (.summary.success_rate | type == "number")) and
+      (.summary.avg_runtime_s == null or (.summary.avg_runtime_s | type == "number")) and
+      (.summary.avg_fuzz_cases == null or (.summary.avg_fuzz_cases | type == "number")) and
+      (.summary.p95_runtime_s == null or (.summary.p95_runtime_s | type == "number")) and
+      (.summary.crash_free_failures | type == "number") and
+      (.summary.crash_free_rate == null or (.summary.crash_free_rate | type == "number"))
+    )
+  ' "$artifact_dir/security-trend-summary-7d.json" >/dev/null; then
+    echo "Invalid Gate E artifact schema: security-trend-summary-7d.json" | tee "$artifact_dir/failure.txt"
+    exit 1
+  fi
+
   if [[ "$trend_status" == "ok" ]]; then
     success_rate="$(jq -r '.summary.success_rate' "$artifact_dir/security-trend-summary-7d.json")"
     crash_free_rate="$(jq -r '.summary.crash_free_rate' "$artifact_dir/security-trend-summary-7d.json")"

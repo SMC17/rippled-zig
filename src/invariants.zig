@@ -27,6 +27,12 @@ pub const InvariantFailure = union(enum) {
     },
 };
 
+fn failInvariant(comptime fmt: []const u8, args: anytype) noreturn {
+    std.log.err(fmt, args);
+    std.debug.assert(false);
+    unreachable;
+}
+
 pub fn checkBalanceConservation(
     state: *const ledger.AccountState,
     total_fees_destroyed: types.Drops,
@@ -97,7 +103,7 @@ pub fn assertBalanceConservation(
 ) void {
     if (checkBalanceConservation(state, total_fees_destroyed, expected_total)) |failure| {
         const f = failure.balance_conservation;
-        std.debug.panic("invariant violation: balance conservation: sum={d} fees_destroyed={d} expected={d}", .{
+        failInvariant("invariant violation: balance conservation: sum={d} fees_destroyed={d} expected={d}", .{
             f.sum,
             f.fees_destroyed,
             f.expected,
@@ -113,7 +119,7 @@ pub fn assertSequenceMonotonicity(
 ) void {
     if (checkSequenceMonotonicity(before, after)) |failure| {
         const f = failure.sequence_monotonicity;
-        std.debug.panic("invariant violation: sequence monotonicity: account {any} seq {d} -> {d}", .{
+        failInvariant("invariant violation: sequence monotonicity: account {any} seq {d} -> {d}", .{
             f.account_prefix,
             f.before_seq,
             f.after_seq,
@@ -125,7 +131,7 @@ pub fn assertSequenceMonotonicity(
 pub fn assertLedgerSequenceMonotonicity(prev_seq: types.LedgerSequence, new_seq: types.LedgerSequence) void {
     if (checkLedgerSequenceMonotonicity(prev_seq, new_seq)) |failure| {
         const f = failure.ledger_sequence_monotonicity;
-        std.debug.panic("invariant violation: ledger sequence monotonicity: prev={d} new={d}", .{
+        failInvariant("invariant violation: ledger sequence monotonicity: prev={d} new={d}", .{
             f.prev_seq,
             f.new_seq,
         });
@@ -136,7 +142,7 @@ pub fn assertLedgerSequenceMonotonicity(prev_seq: types.LedgerSequence, new_seq:
 pub fn assertTotalCoinsWithinBound(ledger_obj: *const ledger.Ledger) void {
     if (checkTotalCoinsWithinBound(ledger_obj)) |failure| {
         const f = failure.total_coins_within_bound;
-        std.debug.panic("invariant violation: total_coins {d} > MAX_XRP", .{f.total_coins});
+        failInvariant("invariant violation: total_coins {d} > MAX_XRP", .{f.total_coins});
     }
 }
 

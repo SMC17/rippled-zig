@@ -39,6 +39,9 @@ Before promoting a tag as production-oriented:
 4. `SHA256SUMS.sig` present and verifiable with published public key.
 5. `PROJECT_STATUS.md` updated with evidence references.
 
+Security artifact integrity note:
+- Gate E decision inputs (`security-metrics.json`, `security-trend-summary-7d.json` when generated) are now schema-checked in `scripts/gates/gate_e.sh` to prevent silent artifact format drift before release decisions.
+
 If signing is unavailable, release may be published for development/internal use only and must not be represented as production-oriented.
 
 ## Verifier Runbook
