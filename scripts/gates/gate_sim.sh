@@ -110,6 +110,11 @@ if [[ "$sim_scenario" == "queue_pressure" ]]; then
   if [[ ! -f "$diagnostics_file" ]]; then
     fail "Missing queue-pressure diagnostics artifact"
   fi
+  if ! scripts/sim/run_invariant_checks.sh "$artifact_dir" "queue_pressure"; then
+    inv_name="$(jq -r '.failure.invariant // "unknown"' "$artifact_dir/protocol-invariants.json" 2>/dev/null || echo unknown)"
+    inv_reason="$(jq -r '.failure.reason // "unknown"' "$artifact_dir/protocol-invariants.json" 2>/dev/null || echo unknown)"
+    fail "Queue-pressure protocol invariant failure: ${inv_name} (${inv_reason})"
+  fi
 
   status="$(jq -r '.status // "unknown"' "$summary_file")"
   deterministic="$(jq -r '.deterministic // false' "$summary_file")"
@@ -229,8 +234,13 @@ SIM_JITTER_MS="$sim_jitter_ms" \
 scripts/sim/run_local_cluster.sh "$artifact_dir"
 
 summary_file="$artifact_dir/simulation-summary.json"
-if [[ ! -f "$summary_file" ]]; then
+  if [[ ! -f "$summary_file" ]]; then
   fail "Missing simulation summary artifact"
+fi
+if ! scripts/sim/run_invariant_checks.sh "$artifact_dir" "standard"; then
+  inv_name="$(jq -r '.failure.invariant // "unknown"' "$artifact_dir/protocol-invariants.json" 2>/dev/null || echo unknown)"
+  inv_reason="$(jq -r '.failure.reason // "unknown"' "$artifact_dir/protocol-invariants.json" 2>/dev/null || echo unknown)"
+  fail "Simulation protocol invariant failure: ${inv_name} (${inv_reason})"
 fi
 
 status="$(jq -r '.status // "unknown"' "$summary_file")"
