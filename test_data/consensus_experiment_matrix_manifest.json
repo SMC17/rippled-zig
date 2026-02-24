@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "manifest_type": "consensus_experiment_matrix",
+  "deterministic": true,
+  "experiments": [
+    {
+      "label": "baseline",
+      "validators": 4,
+      "max_iterations": 200,
+      "config": {
+        "final_threshold": 0.8,
+        "open_phase_ticks": 20,
+        "open_phase_ms": 2000,
+        "establish_phase_ticks": 5,
+        "consensus_round_ticks": 5
+      }
+    },
+    {
+      "label": "fast",
+      "validators": 4,
+      "max_iterations": 200,
+      "config": {
+        "final_threshold": 0.7,
+        "open_phase_ticks": 10,
+        "open_phase_ms": 1000,
+        "establish_phase_ticks": 3,
+        "consensus_round_ticks": 2
+      }
+    },
+    {
+      "label": "strict",
+      "validators": 5,
+      "max_iterations": 250,
+      "config": {
+        "final_threshold": 0.9,
+        "open_phase_ticks": 24,
+        "open_phase_ms": 2500,
+        "establish_phase_ticks": 6,
+        "consensus_round_ticks": 6
+      }
+    }
+  ]
+}

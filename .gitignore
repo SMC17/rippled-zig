@@ -19,6 +19,7 @@ test_data/*.json
 !test_data/secp_vector_provenance.json
 !test_data/agent_status_schema.json
 !test_data/sim_scenarios_manifest.json
+!test_data/consensus_experiment_matrix_manifest.json
 !test_data/control_plane_policy_snapshot.json
 !test_data/gate_d_account_info_fixture.json
 !test_data/submit_success_state_contract.json
