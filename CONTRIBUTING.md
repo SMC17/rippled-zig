@@ -45,6 +45,10 @@ zig build run
 - Read `src/types.zig` for XRPL fundamentals
 - Check `src/consensus.zig` for BFT algorithm
 - Review tests to see examples
+4. **Read the current policy docs before agent-driven work**:
+- `PROJECT_STATUS.md` (current gate-backed status)
+- `docs/CONTROL_PLANE_POLICY.md` (runtime profile boundaries)
+- `docs/AGENT_AUTOMATION_POLICY.md` (least-privilege automation checklist)
 
 ## How to Contribute
 

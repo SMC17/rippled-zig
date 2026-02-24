@@ -10,6 +10,7 @@
 | [`docs/status/ARCHITECTURE_SOT.md`](status/ARCHITECTURE_SOT.md) | Module maturity, ownership, risk per module |
 | [`docs/status/AGENT_NATIVE_BACKLOG.md`](status/AGENT_NATIVE_BACKLOG.md) | Prioritized agent-native backlog (P0–P3) |
 | [`docs/CONTROL_PLANE_POLICY.md`](CONTROL_PLANE_POLICY.md) | Profile policy, method allowlist, agent control surface |
+| [`docs/AGENT_AUTOMATION_POLICY.md`](AGENT_AUTOMATION_POLICY.md) | Least-privilege agent automation checklist (repo/runtime/release boundaries) |
 | [`docs/RELEASE_SIGNING_POLICY.md`](RELEASE_SIGNING_POLICY.md) | Signed release artifact policy and verifier procedure |
 | [`docs/ROADMAP.md`](ROADMAP.md) | Milestones and execution track |
 | [`docs/ROADMAP_TO_PARITY.md`](ROADMAP_TO_PARITY.md) | Parity claim levels and workstreams |

@@ -120,6 +120,13 @@ If you encounter build errors related to Zig version compatibility, ensure you'r
 zig version
 ```
 
+### 5. If using an AI coding agent
+
+Read these first so your automation behavior matches the project's current safety boundaries:
+- `PROJECT_STATUS.md`
+- `docs/CONTROL_PLANE_POLICY.md`
+- `docs/AGENT_AUTOMATION_POLICY.md`
+
 ## Current Limitations
 
 This is an early-stage implementation with the following limitations:
