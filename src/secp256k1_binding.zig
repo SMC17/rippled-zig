@@ -49,6 +49,22 @@ const c = if (has_secp256k1) struct {
         input: [*c]const u8,
         inputlen: usize,
     ) c_int;
+    extern fn secp256k1_ec_pubkey_create(
+        ctx: ?*const anyopaque,
+        pubkey: ?*secp256k1_pubkey,
+        seckey: [*c]const u8,
+    ) c_int;
+    extern fn secp256k1_ec_pubkey_serialize(
+        ctx: ?*const anyopaque,
+        output: [*c]u8,
+        outputlen: *usize,
+        pubkey: ?*const secp256k1_pubkey,
+        flags: c_uint,
+    ) c_int;
+    extern fn secp256k1_ec_seckey_verify(
+        ctx: ?*const anyopaque,
+        seckey: [*c]const u8,
+    ) c_int;
     extern fn secp256k1_ecdsa_signature_parse_der(
         ctx: ?*const anyopaque,
         sig: ?*secp256k1_ecdsa_signature,
@@ -203,6 +219,36 @@ pub fn verifySignature(
     );
 
     return verify_result == 1;
+}
+
+const SECP256K1_EC_COMPRESSED: c_uint = 0x0102;
+const SECP256K1_EC_UNCOMPRESSED: c_uint = 0x0002;
+
+/// Verify that a secret key is valid (non-zero, less than group order)
+pub fn verifySecretKey(secret_key: [32]u8) !bool {
+    if (!has_secp256k1) return error.LibraryUnavailable;
+    try initSign();
+    const ctx = sign_context orelse return error.ContextNotInitialized;
+    return c.secp256k1_ec_seckey_verify(ctx, &secret_key) == 1;
+}
+
+/// Derive compressed public key (33 bytes) from a 32-byte secret key
+pub fn derivePublicKey(secret_key: [32]u8) ![33]u8 {
+    if (!has_secp256k1) return error.LibraryUnavailable;
+    try initSign();
+    const ctx = sign_context orelse return error.ContextNotInitialized;
+
+    var pubkey: secp256k1_pubkey = undefined;
+    if (c.secp256k1_ec_pubkey_create(ctx, &pubkey, &secret_key) != 1) {
+        return error.InvalidSecretKey;
+    }
+
+    var output: [33]u8 = undefined;
+    var output_len: usize = 33;
+    if (c.secp256k1_ec_pubkey_serialize(ctx, &output, &output_len, &pubkey, SECP256K1_EC_COMPRESSED) != 1) {
+        return error.SerializeFailed;
+    }
+    return output;
 }
 
 /// Alternative: Pure Zig implementation (for when C binding not available)

@@ -55,6 +55,98 @@ pub const SignatureAlgorithm = enum {
     ed25519, // Ed25519 (modern, efficient)
 };
 
+/// XRPL Ed25519 utilities.
+///
+/// On the XRP Ledger, Ed25519 public keys are transmitted with a 0xED prefix
+/// byte, making them 33 bytes long (same wire size as compressed secp256k1
+/// keys).  Account IDs are derived from the *prefixed* form:
+///
+///     AccountID = RIPEMD160(SHA256(0xED || raw_32_byte_pubkey))
+///
+pub const Ed25519 = struct {
+    /// The XRPL prefix byte for Ed25519 public keys.
+    pub const PREFIX: u8 = 0xED;
+
+    /// Build the 33-byte XRPL-prefixed public key from a raw 32-byte key.
+    pub fn prefixedPublicKey(raw: [32]u8) [33]u8 {
+        var out: [33]u8 = undefined;
+        out[0] = PREFIX;
+        @memcpy(out[1..], &raw);
+        return out;
+    }
+
+    /// Derive the XRPL account ID from a raw 32-byte Ed25519 public key.
+    /// Uses the prefixed (33-byte) form as input to the standard
+    /// RIPEMD160(SHA256(key)) pipeline.
+    pub fn accountID(raw_pub: [32]u8) types.AccountID {
+        const prefixed = prefixedPublicKey(raw_pub);
+        return Hash.accountID(&prefixed);
+    }
+
+    /// Generate a random Ed25519 key pair and return it together with the
+    /// XRPL-prefixed public key.
+    pub fn generateKeyPair() struct {
+        key_pair: std.crypto.sign.Ed25519.KeyPair,
+        xrpl_public_key: [33]u8,
+    } {
+        const kp = std.crypto.sign.Ed25519.KeyPair.generate();
+        return .{
+            .key_pair = kp,
+            .xrpl_public_key = prefixedPublicKey(kp.public_key.toBytes()),
+        };
+    }
+
+    /// Derive an Ed25519 key pair from a 32-byte seed (secret).
+    /// The seed is expanded via SHA-512 Half and used as the Ed25519
+    /// secret scalar, following the XRPL key-derivation convention.
+    pub fn keyPairFromSeed(seed: [32]u8) !struct {
+        key_pair: std.crypto.sign.Ed25519.KeyPair,
+        xrpl_public_key: [33]u8,
+    } {
+        const kp = try std.crypto.sign.Ed25519.KeyPair.fromSecretKey(
+            std.crypto.sign.Ed25519.SecretKey.fromBytes(seed ++ [_]u8{0} ** 32),
+        );
+        return .{
+            .key_pair = kp,
+            .xrpl_public_key = prefixedPublicKey(kp.public_key.toBytes()),
+        };
+    }
+
+    /// Sign arbitrary data with an Ed25519 key pair.
+    /// Returns the 64-byte signature.
+    pub fn signMessage(
+        key_pair: std.crypto.sign.Ed25519.KeyPair,
+        data: []const u8,
+    ) ![64]u8 {
+        const sig = try key_pair.sign(data, null);
+        return sig.toBytes();
+    }
+
+    /// Verify an Ed25519 signature.
+    /// `public_key` may be 32 bytes (raw) or 33 bytes (XRPL-prefixed; the
+    /// leading 0xED byte is stripped automatically).
+    pub fn verifySignature(
+        public_key: []const u8,
+        data: []const u8,
+        signature: [64]u8,
+    ) !bool {
+        var raw: [32]u8 = undefined;
+        if (public_key.len == 33) {
+            if (public_key[0] != PREFIX) return false;
+            @memcpy(&raw, public_key[1..33]);
+        } else if (public_key.len == 32) {
+            @memcpy(&raw, public_key);
+        } else {
+            return false;
+        }
+
+        const sig = std.crypto.sign.Ed25519.Signature.fromBytes(signature);
+        const pub_key = try std.crypto.sign.Ed25519.PublicKey.fromBytes(raw);
+        sig.verify(data, pub_key) catch return false;
+        return true;
+    }
+};
+
 /// Key pair for signing transactions
 pub const KeyPair = struct {
     algorithm: SignatureAlgorithm,
@@ -67,15 +159,15 @@ pub const KeyPair = struct {
         self.allocator.free(self.private_key);
     }
 
-    /// Generate a new Ed25519 key pair
+    /// Generate a new Ed25519 key pair.
+    /// The stored public_key is the raw 32-byte key.  Use
+    /// `getXrplPublicKey()` to obtain the 0xED-prefixed form.
     pub fn generateEd25519(allocator: std.mem.Allocator) !KeyPair {
-        // Generate key pair - uses std.crypto.random internally
-        const key_pair = std.crypto.sign.Ed25519.KeyPair.generate();
+        const gen = Ed25519.generateKeyPair();
 
-        // Convert PublicKey and SecretKey structs to byte slices
-        const pub_key_bytes = key_pair.public_key.toBytes();
+        const pub_key_bytes = gen.key_pair.public_key.toBytes();
         const public_key = try allocator.dupe(u8, &pub_key_bytes);
-        const secret_key_bytes = key_pair.secret_key.toBytes();
+        const secret_key_bytes = gen.key_pair.secret_key.toBytes();
         const private_key = try allocator.dupe(u8, &secret_key_bytes);
 
         return KeyPair{
@@ -147,20 +239,24 @@ pub const KeyPair = struct {
     pub fn verify(public_key: []const u8, data: []const u8, signature: []const u8, algorithm: SignatureAlgorithm) !bool {
         switch (algorithm) {
             .ed25519 => {
-                if (public_key.len != 32 or signature.len != 64) {
+                if (signature.len != 64) return false;
+
+                // Accept both raw (32-byte) and XRPL-prefixed (33-byte) keys
+                var raw: [32]u8 = undefined;
+                if (public_key.len == 33 and public_key[0] == Ed25519.PREFIX) {
+                    @memcpy(&raw, public_key[1..33]);
+                } else if (public_key.len == 32) {
+                    @memcpy(&raw, public_key);
+                } else {
                     return false;
                 }
-
-                var pub_key: [32]u8 = undefined;
-                @memcpy(&pub_key, public_key);
 
                 var sig_bytes: [64]u8 = undefined;
                 @memcpy(&sig_bytes, signature);
 
                 const sig = std.crypto.sign.Ed25519.Signature.fromBytes(sig_bytes);
-                const pub_key_struct = try std.crypto.sign.Ed25519.PublicKey.fromBytes(pub_key);
+                const pub_key_struct = try std.crypto.sign.Ed25519.PublicKey.fromBytes(raw);
 
-                // Verify signature using Signature.verify method (Zig 0.14.1 API)
                 sig.verify(data, pub_key_struct) catch {
                     return false;
                 };
@@ -182,9 +278,39 @@ pub const KeyPair = struct {
         }
     }
 
-    /// Get the account ID for this key pair
-    pub fn getAccountID(self: KeyPair) types.AccountID {
-        return Hash.accountID(self.public_key);
+    /// Get the XRPL-prefixed (33-byte) public key for Ed25519, or the raw
+    /// public key for secp256k1.
+    pub fn getXrplPublicKey(self: KeyPair) ![33]u8 {
+        switch (self.algorithm) {
+            .ed25519 => {
+                if (self.public_key.len < 32) return error.InvalidKeyLength;
+                var raw: [32]u8 = undefined;
+                @memcpy(&raw, self.public_key[0..32]);
+                return Ed25519.prefixedPublicKey(raw);
+            },
+            .secp256k1 => {
+                if (self.public_key.len != 33) return error.InvalidKeyLength;
+                var out: [33]u8 = undefined;
+                @memcpy(&out, self.public_key);
+                return out;
+            },
+        }
+    }
+
+    /// Get the account ID for this key pair.
+    /// For Ed25519 keys, this uses the XRPL-prefixed (0xED || pubkey) form.
+    pub fn getAccountID(self: KeyPair) !types.AccountID {
+        switch (self.algorithm) {
+            .ed25519 => {
+                if (self.public_key.len < 32) return error.InvalidKeyLength;
+                var raw: [32]u8 = undefined;
+                @memcpy(&raw, self.public_key[0..32]);
+                return Ed25519.accountID(raw);
+            },
+            .secp256k1 => {
+                return Hash.accountID(self.public_key);
+            },
+        }
     }
 };
 
@@ -238,6 +364,144 @@ test "account ID derivation matches known XRPL vector" {
     };
 
     try std.testing.expectEqualSlices(u8, &expected, &account_id);
+}
+
+// ---------------------------------------------------------------------------
+// XRPL Ed25519 tests
+// ---------------------------------------------------------------------------
+
+test "ed25519 prefixed public key is 33 bytes starting with 0xED" {
+    const gen = Ed25519.generateKeyPair();
+    const prefixed = gen.xrpl_public_key;
+
+    try std.testing.expectEqual(@as(usize, 33), prefixed.len);
+    try std.testing.expectEqual(@as(u8, 0xED), prefixed[0]);
+
+    // The remaining 32 bytes must match the raw public key
+    const raw = gen.key_pair.public_key.toBytes();
+    try std.testing.expectEqualSlices(u8, &raw, prefixed[1..]);
+}
+
+test "ed25519 sign and verify via Ed25519 module" {
+    const gen = Ed25519.generateKeyPair();
+    const message = "XRPL Ed25519 test payload";
+    const sig = try Ed25519.signMessage(gen.key_pair, message);
+
+    // Verify with raw 32-byte key
+    const raw = gen.key_pair.public_key.toBytes();
+    try std.testing.expect(try Ed25519.verifySignature(&raw, message, sig));
+
+    // Verify with XRPL-prefixed 33-byte key
+    try std.testing.expect(try Ed25519.verifySignature(&gen.xrpl_public_key, message, sig));
+
+    // Tamper with message -- verification must fail
+    try std.testing.expect(!try Ed25519.verifySignature(&raw, "tampered", sig));
+
+    // Tamper with signature -- verification must fail
+    var bad_sig = sig;
+    bad_sig[0] ^= 0xFF;
+    try std.testing.expect(!try Ed25519.verifySignature(&raw, message, bad_sig));
+}
+
+test "ed25519 verify rejects wrong public key" {
+    const gen1 = Ed25519.generateKeyPair();
+    const gen2 = Ed25519.generateKeyPair();
+    const message = "signed by gen1";
+    const sig = try Ed25519.signMessage(gen1.key_pair, message);
+
+    // gen2's key must not verify gen1's signature
+    const raw2 = gen2.key_pair.public_key.toBytes();
+    try std.testing.expect(!try Ed25519.verifySignature(&raw2, message, sig));
+}
+
+test "ed25519 account ID uses prefixed key (RIPEMD160(SHA256(0xED || pubkey)))" {
+    const gen = Ed25519.generateKeyPair();
+    const raw = gen.key_pair.public_key.toBytes();
+
+    // Compute expected account ID manually
+    const prefixed = Ed25519.prefixedPublicKey(raw);
+    var sha256_hash: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(&prefixed, &sha256_hash, .{});
+    const expected = Hash.ripemd160(&sha256_hash);
+
+    const actual = Ed25519.accountID(raw);
+    try std.testing.expectEqualSlices(u8, &expected, &actual);
+}
+
+test "ed25519 KeyPair getXrplPublicKey returns 0xED-prefixed key" {
+    const allocator = std.testing.allocator;
+    var kp = try KeyPair.generateEd25519(allocator);
+    defer kp.deinit();
+
+    const xrpl_pub = try kp.getXrplPublicKey();
+    try std.testing.expectEqual(@as(u8, 0xED), xrpl_pub[0]);
+    try std.testing.expectEqualSlices(u8, kp.public_key[0..32], xrpl_pub[1..]);
+}
+
+test "ed25519 KeyPair getAccountID uses prefixed derivation" {
+    const allocator = std.testing.allocator;
+    var kp = try KeyPair.generateEd25519(allocator);
+    defer kp.deinit();
+
+    // Via KeyPair method
+    const acct_id = try kp.getAccountID();
+
+    // Via Ed25519 module directly
+    var raw: [32]u8 = undefined;
+    @memcpy(&raw, kp.public_key[0..32]);
+    const expected = Ed25519.accountID(raw);
+
+    try std.testing.expectEqualSlices(u8, &expected, &acct_id);
+}
+
+test "ed25519 verify accepts XRPL-prefixed key through KeyPair.verify" {
+    const allocator = std.testing.allocator;
+    var kp = try KeyPair.generateEd25519(allocator);
+    defer kp.deinit();
+
+    const message = "verify via KeyPair.verify with prefixed key";
+    const signature = try kp.sign(message, allocator);
+    defer allocator.free(signature);
+
+    // Verify with raw 32-byte key (existing behaviour)
+    try std.testing.expect(try KeyPair.verify(kp.public_key, message, signature, .ed25519));
+
+    // Verify with 33-byte XRPL-prefixed key (new behaviour)
+    const xrpl_pub = try kp.getXrplPublicKey();
+    try std.testing.expect(try KeyPair.verify(&xrpl_pub, message, signature, .ed25519));
+}
+
+test "ed25519 KeyPair signXrplTransaction round-trip" {
+    const allocator = std.testing.allocator;
+    var kp = try KeyPair.generateEd25519(allocator);
+    defer kp.deinit();
+
+    const canonical = [_]u8{ 0x12, 0x00, 0x00, 0x24, 0x00, 0x00, 0x00, 0x01 };
+    const sig = try kp.signXrplTransaction(&canonical, allocator);
+    defer allocator.free(sig);
+
+    // Ed25519 XRPL signing signs the raw canonical bytes (no STX prefix hash)
+    try std.testing.expect(sig.len == 64);
+    try std.testing.expect(try KeyPair.verify(kp.public_key, &canonical, sig, .ed25519));
+}
+
+test "ed25519 verifySignature rejects invalid key lengths" {
+    const gen = Ed25519.generateKeyPair();
+    const sig = try Ed25519.signMessage(gen.key_pair, "test");
+
+    // 31-byte key: too short
+    const short_key = [_]u8{0} ** 31;
+    try std.testing.expect(!try Ed25519.verifySignature(&short_key, "test", sig));
+
+    // 34-byte key: too long
+    const long_key = [_]u8{0xED} ** 34;
+    try std.testing.expect(!try Ed25519.verifySignature(&long_key, "test", sig));
+
+    // 33-byte key with wrong prefix
+    var wrong_prefix: [33]u8 = undefined;
+    wrong_prefix[0] = 0x02; // secp256k1 prefix, not 0xED
+    @memcpy(wrong_prefix[1..], &gen.key_pair.public_key.toBytes());
+    try std.testing.expect(!try Ed25519.verifySignature(&wrong_prefix, "test", sig));
 }
 
 test "secp256k1 strict verification vector suite" {

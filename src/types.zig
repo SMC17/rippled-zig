@@ -36,6 +36,80 @@ pub const Currency = union(enum) {
     }
 };
 
+/// 160-bit (20-byte) encoded currency code for XRPL serialization.
+///
+/// Standard 3-char codes (e.g. "USD"): bytes 12-14 hold ASCII, rest are zero.
+/// Hex currency codes: 40-char hex string decoded into all 20 bytes directly.
+pub const CurrencyCode = struct {
+    bytes: [20]u8,
+
+    /// Encode a standard 3-character currency code (e.g. "USD").
+    /// Places the three ASCII bytes at positions 12, 13, 14 with all other
+    /// bytes zero, per XRPL serialization spec.
+    pub fn fromStandard(code: []const u8) error{InvalidCurrencyCode}!CurrencyCode {
+        if (code.len != 3) return error.InvalidCurrencyCode;
+        // Validate ASCII: each byte must be printable ASCII (0x20-0x7E) and
+        // the first byte must NOT be 0x00 (which would collide with XRP encoding).
+        for (code) |ch| {
+            if (ch < 0x20 or ch > 0x7E) return error.InvalidCurrencyCode;
+        }
+        var bytes = [_]u8{0} ** 20;
+        bytes[12] = code[0];
+        bytes[13] = code[1];
+        bytes[14] = code[2];
+        return CurrencyCode{ .bytes = bytes };
+    }
+
+    /// Decode a 40-character hex string into 20 raw bytes (hex / non-standard currency).
+    pub fn fromHex(hex_str: []const u8) error{InvalidCurrencyCode}!CurrencyCode {
+        if (hex_str.len != 40) return error.InvalidCurrencyCode;
+        var bytes: [20]u8 = undefined;
+        for (0..20) |i| {
+            const hi = hexVal(hex_str[i * 2]) orelse return error.InvalidCurrencyCode;
+            const lo = hexVal(hex_str[i * 2 + 1]) orelse return error.InvalidCurrencyCode;
+            bytes[i] = (@as(u8, hi) << 4) | @as(u8, lo);
+        }
+        return CurrencyCode{ .bytes = bytes };
+    }
+
+    fn hexVal(c: u8) ?u4 {
+        if (c >= '0' and c <= '9') return @intCast(c - '0');
+        if (c >= 'a' and c <= 'f') return @intCast(c - 'a' + 10);
+        if (c >= 'A' and c <= 'F') return @intCast(c - 'A' + 10);
+        return null;
+    }
+};
+
+/// IOU (token) amount for XRPL serialization.
+///
+/// Represents a non-XRP amount with mantissa, exponent, currency code, and issuer.
+/// The mantissa is unsigned and `is_negative` tracks sign so that zero amounts
+/// are never negative.
+pub const IOUAmount = struct {
+    /// Absolute mantissa.  For non-zero values this must be in [10^15, 10^16-1]
+    /// after normalization.
+    mantissa: u64,
+    /// Decimal exponent (range: -96 .. +80 after normalization).
+    exponent: i8,
+    /// True when the amount is negative.
+    is_negative: bool,
+    /// Encoded 20-byte currency code.
+    currency: CurrencyCode,
+    /// Raw 20-byte issuer AccountID.
+    issuer: AccountID,
+
+    /// Create a zero IOU amount.
+    pub fn zero(currency: CurrencyCode, issuer: AccountID) IOUAmount {
+        return IOUAmount{
+            .mantissa = 0,
+            .exponent = 0,
+            .is_negative = false,
+            .currency = currency,
+            .issuer = issuer,
+        };
+    }
+};
+
 /// Amount can be XRP (in drops) or IOU (issued currency)
 pub const Amount = union(enum) {
     xrp: Drops,
@@ -175,4 +249,44 @@ test "currency types" {
 
     const usd = Currency{ .standard = .{ 'U', 'S', 'D' } };
     try std.testing.expect(std.meta.activeTag(usd) == .standard);
+}
+
+test "CurrencyCode standard 3-char encoding" {
+    const usd = try CurrencyCode.fromStandard("USD");
+    // Bytes 0-11 must be zero
+    for (0..12) |i| {
+        try std.testing.expectEqual(@as(u8, 0), usd.bytes[i]);
+    }
+    try std.testing.expectEqual(@as(u8, 'U'), usd.bytes[12]);
+    try std.testing.expectEqual(@as(u8, 'S'), usd.bytes[13]);
+    try std.testing.expectEqual(@as(u8, 'D'), usd.bytes[14]);
+    // Bytes 15-19 must be zero
+    for (15..20) |i| {
+        try std.testing.expectEqual(@as(u8, 0), usd.bytes[i]);
+    }
+}
+
+test "CurrencyCode rejects invalid length" {
+    try std.testing.expectError(error.InvalidCurrencyCode, CurrencyCode.fromStandard("US"));
+    try std.testing.expectError(error.InvalidCurrencyCode, CurrencyCode.fromStandard("USDC"));
+}
+
+test "CurrencyCode hex encoding" {
+    // 40-char hex: all 0x01 bytes
+    const hex_code = try CurrencyCode.fromHex("0101010101010101010101010101010101010101");
+    for (0..20) |i| {
+        try std.testing.expectEqual(@as(u8, 0x01), hex_code.bytes[i]);
+    }
+}
+
+test "CurrencyCode hex rejects invalid length" {
+    try std.testing.expectError(error.InvalidCurrencyCode, CurrencyCode.fromHex("0102"));
+}
+
+test "IOUAmount zero" {
+    const usd = try CurrencyCode.fromStandard("USD");
+    const issuer = [_]u8{0} ** 20;
+    const amt = IOUAmount.zero(usd, issuer);
+    try std.testing.expectEqual(@as(u64, 0), amt.mantissa);
+    try std.testing.expect(!amt.is_negative);
 }

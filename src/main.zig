@@ -9,6 +9,8 @@ const serialization = @import("serialization.zig");
 const secp256k1_binding = @import("secp256k1_binding.zig");
 const secp256k1 = @import("secp256k1.zig");
 const ripemd160 = @import("ripemd160.zig");
+const benchmark = @import("benchmark.zig");
+const wallet_mod = @import("wallet.zig");
 
 // Experimental node modules — only imported when -Dexperimental=true
 const has_experimental = build_options.experimental;
@@ -42,6 +44,8 @@ pub fn main() !void {
         try cmdVerifySig(allocator, args[2..]);
     } else if (std.mem.eql(u8, command, "encode-address")) {
         try cmdEncodeAddress(allocator, args[2..]);
+    } else if (std.mem.eql(u8, command, "benchmark")) {
+        benchmark.run(allocator);
     } else if (std.mem.eql(u8, command, "version")) {
         printVersion();
     } else if (std.mem.eql(u8, command, "help")) {
@@ -81,6 +85,7 @@ fn printUsage() void {
         \\  hash-tx         Compute signing hash for a transaction
         \\  verify-sig      Verify a transaction signature
         \\  encode-address  Encode/decode XRPL base58check addresses
+        \\  benchmark       Run performance benchmark suite
         \\  version         Show version and build info
         \\  help            Show this help
         \\
@@ -336,6 +341,7 @@ test "basic toolkit imports" {
     _ = types;
     _ = serialization;
     _ = ripemd160;
+    _ = wallet_mod;
 }
 
 test "version string" {
@@ -363,6 +369,11 @@ comptime {
     _ = @import("parity_check.zig");
     _ = @import("merkle.zig");
     _ = @import("amendments.zig");
+    _ = @import("benchmark.zig");
+    _ = @import("xrpl_time.zig");
+    _ = @import("currency.zig");
+    _ = @import("wallet.zig");
+    _ = @import("field_defs.zig");
 
     // Experimental test suites
     if (has_experimental) {
