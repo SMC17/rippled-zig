@@ -376,6 +376,7 @@ comptime {
     _ = @import("currency.zig");
     _ = @import("crypto_utils.zig");
     _ = @import("fee_engine.zig");
+    _ = @import("result_codes.zig");
     _ = @import("wallet.zig");
     _ = @import("field_defs.zig");
     _ = @import("json_tx.zig");

@@ -1,0 +1,14 @@
+.zig-cache
+zig-cache
+zig-out
+.git
+.github
+artifacts
+test_data
+test_output.txt
+digest-zeth.txt
+benchmarks
+docs
+*.md
+!build.zig
+!build.zig.zon

@@ -162,6 +162,91 @@ pub fn build(b: *std.Build) void {
     wasm_step.dependOn(&kernel_install.step);
     wasm_step.dependOn(&hook_install.step);
 
+    // ── Cross-compilation release builds ──
+    const release_step = b.step("release", "Build release binaries for all platforms");
+
+    const CrossTarget = struct {
+        name: []const u8,
+        cpu_arch: std.Target.Cpu.Arch,
+        os_tag: std.Target.Os.Tag,
+        abi: ?std.Target.Abi = null,
+        is_wasm: bool = false,
+    };
+
+    const cross_targets = [_]CrossTarget{
+        .{ .name = "x86_64-linux", .cpu_arch = .x86_64, .os_tag = .linux, .abi = .musl },
+        .{ .name = "aarch64-linux", .cpu_arch = .aarch64, .os_tag = .linux, .abi = .musl },
+        .{ .name = "x86_64-macos", .cpu_arch = .x86_64, .os_tag = .macos },
+        .{ .name = "aarch64-macos", .cpu_arch = .aarch64, .os_tag = .macos },
+        .{ .name = "x86_64-windows", .cpu_arch = .x86_64, .os_tag = .windows },
+        .{ .name = "wasm32-freestanding", .cpu_arch = .wasm32, .os_tag = .freestanding, .is_wasm = true },
+    };
+
+    for (cross_targets) |ct| {
+        var query: std.Target.Query = .{
+            .cpu_arch = ct.cpu_arch,
+            .os_tag = ct.os_tag,
+        };
+        if (ct.abi) |abi| {
+            query.abi = abi;
+        }
+        const resolved = b.resolveTargetQuery(query);
+
+        if (ct.is_wasm) {
+            // WASM: build protocol library only (no CLI, no libc)
+            const wasm_lib_module = b.createModule(.{
+                .root_source_file = b.path("src/wasm_lib.zig"),
+                .target = resolved,
+                .optimize = .ReleaseSafe,
+            });
+            const wasm_lib_exe = b.addExecutable(.{
+                .name = "rippled-zig-lib",
+                .root_module = wasm_lib_module,
+            });
+            wasm_lib_exe.entry = .disabled;
+            wasm_lib_exe.rdynamic = true;
+            const wasm_lib_install = b.addInstallArtifact(wasm_lib_exe, .{
+                .dest_dir = .{ .override = .{ .custom = "release/wasm32-freestanding" } },
+            });
+            release_step.dependOn(&wasm_lib_install.step);
+        } else {
+            // Native CLI binary
+            const rel_build_options = b.addOptions();
+            rel_build_options.addOption(bool, "has_secp256k1", false);
+            rel_build_options.addOption(bool, "experimental", false);
+            rel_build_options.addOption(u32, "gate_e_fuzz_cases", 25000);
+            rel_build_options.addOption([]const u8, "gate_e_profile", "release");
+
+            const rel_module = b.createModule(.{
+                .root_source_file = b.path("src/main.zig"),
+                .target = resolved,
+                .optimize = .ReleaseSafe,
+            });
+            rel_module.addOptions("build_options", rel_build_options);
+
+            const rel_exe = b.addExecutable(.{
+                .name = "rippled-zig",
+                .root_module = rel_module,
+            });
+            // Link libc for native targets (use default libc for cross targets)
+            rel_exe.linkLibC();
+            const rel_install = b.addInstallArtifact(rel_exe, .{
+                .dest_dir = .{ .override = .{ .custom = b.fmt("release/{s}", .{ct.name}) } },
+            });
+            release_step.dependOn(&rel_install.step);
+        }
+    }
+
+    // ── Release checksums ──
+    const checksums_step = b.step("release-checksums", "Build all release targets and generate SHA256SUMS");
+    checksums_step.dependOn(release_step);
+    const checksums_run = b.addSystemCommand(&.{
+        "sh", "-c",
+        "cd zig-out/release && find . -type f \\( -name 'rippled-zig' -o -name 'rippled-zig.exe' -o -name 'rippled-zig-lib.wasm' \\) -exec shasum -a 256 {} \\; > SHA256SUMS && cat SHA256SUMS",
+    });
+    checksums_run.step.dependOn(release_step);
+    checksums_step.dependOn(&checksums_run.step);
+
     // ── Experimental-only build steps ──
     if (experimental) {
         // Consensus experiment harness
