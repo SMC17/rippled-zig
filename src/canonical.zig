@@ -219,6 +219,211 @@ pub const CanonicalSerializer = struct {
         return self.addBlob(field_code, data);
     }
 
+    // ── STObject / STArray nested serialization ──
+
+    /// Represents a single inner field for STObject construction.
+    /// The data slice is borrowed (not owned) — it is copied when added.
+    pub const InnerField = struct {
+        type_code: u8,
+        field_code: u8,
+        data: []const u8,
+    };
+
+    /// Serialize a set of inner fields into a single blob: sorted field
+    /// headers + data, followed by the STObject end marker (0xE1).
+    fn serializeInnerFields(allocator: std.mem.Allocator, inner_fields: []const InnerField) ![]u8 {
+        // Sort by canonical order (type_code, then field_code)
+        const sorted = try allocator.alloc(InnerField, inner_fields.len);
+        defer allocator.free(sorted);
+        @memcpy(sorted, inner_fields);
+
+        std.mem.sort(InnerField, sorted, {}, struct {
+            fn lessThan(_: void, a: InnerField, b: InnerField) bool {
+                if (a.type_code != b.type_code) return a.type_code < b.type_code;
+                return a.field_code < b.field_code;
+            }
+        }.lessThan);
+
+        var buf = try std.ArrayList(u8).initCapacity(allocator, inner_fields.len * 24);
+        errdefer buf.deinit();
+
+        for (sorted) |f| {
+            try encodeFieldHeader(&buf, f.type_code, f.field_code);
+            try buf.appendSlice(f.data);
+        }
+
+        // Append STObject end marker
+        try buf.append(0xE1);
+
+        return buf.toOwnedSlice();
+    }
+
+    /// Add an STObject field (type 14). The inner fields are sorted in
+    /// canonical order and terminated with the 0xE1 end marker.
+    pub fn addSTObject(self: *CanonicalSerializer, field_code: u8, inner_fields: []const InnerField) !void {
+        const serialized = try serializeInnerFields(self.allocator, inner_fields);
+        // Transfer ownership directly — addField would dupe, so we append manually
+        try self.fields.append(FieldOrder{
+            .type_code = TypeCode.STObject,
+            .field_code = field_code,
+            .data = serialized,
+        });
+    }
+
+    /// Add an STArray field (type 15). Each element is an STObject
+    /// (identified by its own field_code under type 14) containing inner
+    /// fields. The whole array is terminated with the 0xF1 end marker.
+    ///
+    /// `elements` is an array of (element_field_code, inner_fields) pairs.
+    /// Each element is serialized as: element field header (type 14) +
+    /// canonical inner fields + 0xE1 object end marker.
+    pub fn addSTArray(
+        self: *CanonicalSerializer,
+        field_code: u8,
+        elements: []const STArrayElement,
+    ) !void {
+        var buf = try std.ArrayList(u8).initCapacity(self.allocator, elements.len * 64);
+        errdefer buf.deinit();
+
+        for (elements) |elem| {
+            // Encode the element's STObject field header (type 14)
+            try encodeFieldHeader(&buf, TypeCode.STObject, elem.field_code);
+
+            // Serialize the inner fields in canonical order + 0xE1
+            const inner = try serializeInnerFields(self.allocator, elem.inner_fields);
+            defer self.allocator.free(inner);
+            try buf.appendSlice(inner);
+        }
+
+        // Append STArray end marker
+        try buf.append(0xF1);
+
+        const data = try buf.toOwnedSlice();
+        try self.fields.append(FieldOrder{
+            .type_code = TypeCode.STArray,
+            .field_code = field_code,
+            .data = data,
+        });
+    }
+
+    /// An element within an STArray — an STObject identified by its
+    /// field_code (under type 14) plus its inner fields.
+    pub const STArrayElement = struct {
+        field_code: u8,
+        inner_fields: []const InnerField,
+    };
+
+    // ── Convenience helpers for common nested structures ──
+
+    /// A Memo entry for use with addMemo.
+    pub const MemoEntry = struct {
+        memo_type: []const u8,
+        memo_data: []const u8,
+    };
+
+    /// A SignerEntry for use with addSignerEntry.
+    pub const SignerEntryData = struct {
+        account: [20]u8,
+        weight: u16,
+    };
+
+    /// Add a Memos field (STArray field 9) containing one or more memos.
+    ///
+    /// Memo is STObject field 10 inside Memos (STArray field 9).
+    /// Inner fields: MemoType = Blob field 12, MemoData = Blob field 13.
+    pub fn addMemo(self: *CanonicalSerializer, memos: []const MemoEntry) !void {
+        var elements = try self.allocator.alloc(STArrayElement, memos.len);
+        defer self.allocator.free(elements);
+
+        // Track allocations for cleanup after addSTArray serializes them
+        const TrackPair = struct { vl0: []u8, vl1: []u8, inner: []InnerField };
+        var tracks = try self.allocator.alloc(TrackPair, memos.len);
+        defer {
+            for (tracks) |t| {
+                self.allocator.free(t.vl0);
+                self.allocator.free(t.vl1);
+                self.allocator.free(t.inner);
+            }
+            self.allocator.free(tracks);
+        }
+
+        for (memos, 0..) |memo, i| {
+            const memo_type_vl = try self.vlEncode(memo.memo_type);
+            const memo_data_vl = try self.vlEncode(memo.memo_data);
+
+            const inner = try self.allocator.alloc(InnerField, 2);
+            inner[0] = InnerField{ .type_code = TypeCode.Blob, .field_code = 12, .data = memo_type_vl };
+            inner[1] = InnerField{ .type_code = TypeCode.Blob, .field_code = 13, .data = memo_data_vl };
+
+            tracks[i] = .{ .vl0 = memo_type_vl, .vl1 = memo_data_vl, .inner = inner };
+            elements[i] = STArrayElement{ .field_code = 10, .inner_fields = inner };
+        }
+
+        try self.addSTArray(9, elements);
+    }
+
+    /// Add a SignerEntries field (STArray field 4) containing signer entries.
+    ///
+    /// SignerEntry is STObject field 16 inside SignerEntries (STArray field 4).
+    /// Inner fields: Account = AccountID field 1, SignerWeight = UInt16 field 3.
+    pub fn addSignerEntry(self: *CanonicalSerializer, entries: []const SignerEntryData) !void {
+        var elements = try self.allocator.alloc(STArrayElement, entries.len);
+        defer self.allocator.free(elements);
+
+        const TrackEntry = struct { acct: []u8, weight: []u8, inner: []InnerField };
+        var tracks = try self.allocator.alloc(TrackEntry, entries.len);
+        defer {
+            for (tracks) |t| {
+                self.allocator.free(t.acct);
+                self.allocator.free(t.weight);
+                self.allocator.free(t.inner);
+            }
+            self.allocator.free(tracks);
+        }
+
+        for (entries, 0..) |entry, i| {
+            // AccountID field: VL prefix (0x14 = 20) + 20 bytes
+            const acct_data = try self.allocator.alloc(u8, 21);
+            acct_data[0] = 20;
+            @memcpy(acct_data[1..21], &entry.account);
+
+            // UInt16 field: 2 bytes big-endian
+            const weight_data = try self.allocator.alloc(u8, 2);
+            std.mem.writeInt(u16, weight_data[0..2], entry.weight, .big);
+
+            const inner = try self.allocator.alloc(InnerField, 2);
+            inner[0] = InnerField{ .type_code = TypeCode.UInt16, .field_code = 3, .data = weight_data };
+            inner[1] = InnerField{ .type_code = TypeCode.AccountID, .field_code = 1, .data = acct_data };
+
+            tracks[i] = .{ .acct = acct_data, .weight = weight_data, .inner = inner };
+            elements[i] = STArrayElement{ .field_code = 16, .inner_fields = inner };
+        }
+
+        try self.addSTArray(4, elements);
+    }
+
+    /// VL-encode a byte slice (length prefix + data). Returns owned memory.
+    fn vlEncode(self: *CanonicalSerializer, data: []const u8) ![]u8 {
+        var encoded = try std.ArrayList(u8).initCapacity(self.allocator, data.len + 3);
+        errdefer encoded.deinit();
+
+        if (data.len <= 192) {
+            try encoded.append(@intCast(data.len));
+        } else if (data.len <= 12480) {
+            const len = data.len - 193;
+            try encoded.append(193 + @as(u8, @intCast(len / 256)));
+            try encoded.append(@intCast(len % 256));
+        } else {
+            const len = data.len - 12481;
+            try encoded.append(241 + @as(u8, @intCast(len / 65536)));
+            try encoded.append(@intCast((len / 256) % 256));
+            try encoded.append(@intCast(len % 256));
+        }
+        try encoded.appendSlice(data);
+
+        return encoded.toOwnedSlice();
+    }
+
     /// Encode a field header byte(s) for (type_code, field_code)
     fn encodeFieldHeader(output: *std.ArrayList(u8), type_code: u8, field_code: u8) !void {
         if (type_code < 16 and field_code < 16) {
@@ -1054,4 +1259,258 @@ test "deserialize from known fixture hex (offer_cancel)" {
     try std.testing.expect(tx.Account != null);
 
     std.debug.print("[PASS] Deserialize from known fixture hex (offer_cancel)\n", .{});
+}
+
+// ── STObject / STArray tests ──
+
+test "STObject serialization with end marker" {
+    const allocator = std.testing.allocator;
+    var ser = try CanonicalSerializer.init(allocator);
+    defer ser.deinit();
+
+    // Create an STObject with two inner fields (out of canonical order)
+    // UInt32 (type 2) field 4 = 42, UInt16 (type 1) field 2 = 7
+    var uint16_data: [2]u8 = undefined;
+    std.mem.writeInt(u16, &uint16_data, 7, .big);
+    var uint32_data: [4]u8 = undefined;
+    std.mem.writeInt(u32, &uint32_data, 42, .big);
+
+    const inner = [_]CanonicalSerializer.InnerField{
+        .{ .type_code = TypeCode.UInt32, .field_code = 4, .data = &uint32_data }, // added first but should sort second
+        .{ .type_code = TypeCode.UInt16, .field_code = 2, .data = &uint16_data }, // should sort first
+    };
+
+    try ser.addSTObject(1, &inner);
+    const result = try ser.finish();
+    defer allocator.free(result);
+
+    // STObject field header: type=14, field=1 → (14 << 4) | 1 = 0xE1
+    // Note: 0xE1 is also the end marker byte — this is correct per XRPL encoding.
+    try std.testing.expectEqual(@as(u8, 0xE1), result[0]);
+
+    // Inner fields should be sorted: UInt16 first (type 1), then UInt32 (type 2)
+    // UInt16 field 2 header: (1 << 4) | 2 = 0x12
+    try std.testing.expectEqual(@as(u8, 0x12), result[1]);
+    // UInt16 data: 0x00 0x07
+    try std.testing.expectEqual(@as(u8, 0x00), result[2]);
+    try std.testing.expectEqual(@as(u8, 0x07), result[3]);
+
+    // UInt32 field 4 header: (2 << 4) | 4 = 0x24
+    try std.testing.expectEqual(@as(u8, 0x24), result[4]);
+    // UInt32 data: 0x00 0x00 0x00 0x2A
+    try std.testing.expectEqual(@as(u8, 0x00), result[5]);
+    try std.testing.expectEqual(@as(u8, 0x00), result[6]);
+    try std.testing.expectEqual(@as(u8, 0x00), result[7]);
+    try std.testing.expectEqual(@as(u8, 0x2A), result[8]);
+
+    // End marker 0xE1
+    try std.testing.expectEqual(@as(u8, 0xE1), result[9]);
+
+    // Total: 1 (obj header) + 1+2 (uint16) + 1+4 (uint32) + 1 (end marker) = 10
+    try std.testing.expectEqual(@as(usize, 10), result.len);
+
+    std.debug.print("[PASS] STObject serialization with canonical inner order and 0xE1 end marker\n", .{});
+}
+
+test "STArray serialization with end marker" {
+    const allocator = std.testing.allocator;
+    var ser = try CanonicalSerializer.init(allocator);
+    defer ser.deinit();
+
+    // Create an STArray with two elements, each containing a UInt16 inner field
+    var data1: [2]u8 = undefined;
+    std.mem.writeInt(u16, &data1, 100, .big);
+    var data2: [2]u8 = undefined;
+    std.mem.writeInt(u16, &data2, 200, .big);
+
+    const inner1 = [_]CanonicalSerializer.InnerField{
+        .{ .type_code = TypeCode.UInt16, .field_code = 3, .data = &data1 },
+    };
+    const inner2 = [_]CanonicalSerializer.InnerField{
+        .{ .type_code = TypeCode.UInt16, .field_code = 3, .data = &data2 },
+    };
+
+    const elements = [_]CanonicalSerializer.STArrayElement{
+        .{ .field_code = 10, .inner_fields = &inner1 },
+        .{ .field_code = 10, .inner_fields = &inner2 },
+    };
+
+    try ser.addSTArray(9, &elements);
+    const result = try ser.finish();
+    defer allocator.free(result);
+
+    // STArray field header: type=15, field=9 → (15 << 4) | 9 = 0xF9
+    try std.testing.expectEqual(@as(u8, 0xF9), result[0]);
+
+    // Element 1: STObject field 10 header: type=14, field=10 → (14 << 4) | 10 = 0xEA
+    try std.testing.expectEqual(@as(u8, 0xEA), result[1]);
+    // Inner: UInt16 field 3 header: 0x13, data: 0x00 0x64
+    try std.testing.expectEqual(@as(u8, 0x13), result[2]);
+    try std.testing.expectEqual(@as(u8, 0x00), result[3]);
+    try std.testing.expectEqual(@as(u8, 0x64), result[4]);
+    // Object end marker
+    try std.testing.expectEqual(@as(u8, 0xE1), result[5]);
+
+    // Element 2: STObject field 10 header: 0xEA
+    try std.testing.expectEqual(@as(u8, 0xEA), result[6]);
+    // Inner: UInt16 field 3 header: 0x13, data: 0x00 0xC8
+    try std.testing.expectEqual(@as(u8, 0x13), result[7]);
+    try std.testing.expectEqual(@as(u8, 0x00), result[8]);
+    try std.testing.expectEqual(@as(u8, 0xC8), result[9]);
+    // Object end marker
+    try std.testing.expectEqual(@as(u8, 0xE1), result[10]);
+
+    // Array end marker
+    try std.testing.expectEqual(@as(u8, 0xF1), result[11]);
+
+    // Total: 1 (array header) + 2*(1 obj header + 1+2 uint16 + 1 obj end) + 1 (array end) = 12
+    try std.testing.expectEqual(@as(usize, 12), result.len);
+
+    std.debug.print("[PASS] STArray serialization with 0xE1 object end and 0xF1 array end markers\n", .{});
+}
+
+test "transaction with Memo via addMemo helper" {
+    const allocator = std.testing.allocator;
+    var ser = try CanonicalSerializer.init(allocator);
+    defer ser.deinit();
+
+    // Simulate a Payment with a Memo
+    try ser.addUInt16(2, 0); // TransactionType = Payment (0)
+    try ser.addUInt32(4, 1); // Sequence = 1
+    try ser.addXRPAmount(8, 12); // Fee = 12 drops
+    try ser.addXRPAmount(1, 1_000_000); // Amount = 1 XRP
+
+    const memos = [_]CanonicalSerializer.MemoEntry{
+        .{ .memo_type = "text/plain", .memo_data = "hello" },
+    };
+    try ser.addMemo(&memos);
+
+    const result = try ser.finish();
+    defer allocator.free(result);
+
+    // Verify canonical ordering: UInt16 (1) < UInt32 (2) < Amount (6) < STArray (15)
+    // First byte: TransactionType header (type=1, field=2) = 0x12
+    try std.testing.expectEqual(@as(u8, 0x12), result[0]);
+
+    // The Memos STArray (type 15) should be last since type 15 > all others
+    // Search for Memos array header: type=15, field=9 → 0xF9
+    var found_memos = false;
+    for (result) |b| {
+        if (b == 0xF9) {
+            found_memos = true;
+            break;
+        }
+    }
+    try std.testing.expect(found_memos);
+
+    // The last byte should be the STArray end marker 0xF1
+    try std.testing.expectEqual(@as(u8, 0xF1), result[result.len - 1]);
+
+    // Verify there is exactly one 0xE1 that is an object end marker inside the array
+    // (the Memo object end marker) — note: there may also be a 0xE1 as a field header
+    // elsewhere, but the one right before 0xF1 is the object end
+    try std.testing.expectEqual(@as(u8, 0xE1), result[result.len - 2]);
+
+    std.debug.print("[PASS] Transaction with Memo serialization\n", .{});
+}
+
+test "SignerListSet with SignerEntries via addSignerEntry helper" {
+    const allocator = std.testing.allocator;
+    var ser = try CanonicalSerializer.init(allocator);
+    defer ser.deinit();
+
+    // SignerListSet transaction type = 12
+    try ser.addUInt16(2, 12); // TransactionType
+    try ser.addUInt32(4, 5); // Sequence = 5
+    try ser.addUInt32(11, 3); // SignerQuorum = 3
+    try ser.addXRPAmount(8, 12); // Fee = 12 drops
+
+    const account1 = [_]u8{0x01} ** 20;
+    const account2 = [_]u8{0x02} ** 20;
+    const entries = [_]CanonicalSerializer.SignerEntryData{
+        .{ .account = account1, .weight = 1 },
+        .{ .account = account2, .weight = 2 },
+    };
+    try ser.addSignerEntry(&entries);
+
+    const result = try ser.finish();
+    defer allocator.free(result);
+
+    // Verify canonical ordering places STArray (type 15) after other fields
+    // First byte should be TransactionType (type=1, field=2) = 0x12
+    try std.testing.expectEqual(@as(u8, 0x12), result[0]);
+
+    // Find SignerEntries array header: type=15, field=4 → (15 << 4) | 4 = 0xF4
+    var f4_pos: ?usize = null;
+    for (result, 0..) |b, idx| {
+        if (b == 0xF4) {
+            f4_pos = idx;
+            break;
+        }
+    }
+    try std.testing.expect(f4_pos != null);
+
+    // The last byte should be the STArray end marker 0xF1
+    try std.testing.expectEqual(@as(u8, 0xF1), result[result.len - 1]);
+
+    // Verify there are exactly two 0xE1 end markers inside the array
+    // (one per SignerEntry object)
+    var e1_count: usize = 0;
+    for (result[f4_pos.?..]) |b| {
+        if (b == 0xE1) e1_count += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 2), e1_count);
+
+    // Verify inner fields of each SignerEntry are canonically ordered:
+    // UInt16 (type 1, field 3) should come before AccountID (type 8, field 1)
+    // Inside the array, after each element header, the first inner field
+    // header should be UInt16 field 3 = 0x13
+    const arr_start = f4_pos.? + 1;
+    // First element: STObject field 16 header → type=14, field>=16 → two bytes: (14<<4)|0=0xE0, 16
+    try std.testing.expectEqual(@as(u8, 0xE0), result[arr_start]);
+    try std.testing.expectEqual(@as(u8, 16), result[arr_start + 1]);
+    // First inner field should be UInt16 field 3 = 0x13
+    try std.testing.expectEqual(@as(u8, 0x13), result[arr_start + 2]);
+
+    std.debug.print("[PASS] SignerListSet with SignerEntries serialization\n", .{});
+}
+
+test "end markers at correct positions in nested serialization" {
+    const allocator = std.testing.allocator;
+    var ser = try CanonicalSerializer.init(allocator);
+    defer ser.deinit();
+
+    // Build a minimal STArray with one single-field STObject element
+    var data: [2]u8 = undefined;
+    std.mem.writeInt(u16, &data, 42, .big);
+
+    const inner = [_]CanonicalSerializer.InnerField{
+        .{ .type_code = TypeCode.UInt16, .field_code = 1, .data = &data },
+    };
+    const elements = [_]CanonicalSerializer.STArrayElement{
+        .{ .field_code = 5, .inner_fields = &inner },
+    };
+
+    try ser.addSTArray(3, &elements);
+    const result = try ser.finish();
+    defer allocator.free(result);
+
+    // Layout should be:
+    //   [0] 0xF3    — STArray header (type=15, field=3)
+    //   [1] 0xE5    — STObject header (type=14, field=5)
+    //   [2] 0x11    — UInt16 field 1 header
+    //   [3] 0x00    — data high byte
+    //   [4] 0x2A    — data low byte (42)
+    //   [5] 0xE1    — STObject end marker
+    //   [6] 0xF1    — STArray end marker
+    try std.testing.expectEqual(@as(usize, 7), result.len);
+    try std.testing.expectEqual(@as(u8, 0xF3), result[0]); // array header
+    try std.testing.expectEqual(@as(u8, 0xE5), result[1]); // object header
+    try std.testing.expectEqual(@as(u8, 0x11), result[2]); // inner field header
+    try std.testing.expectEqual(@as(u8, 0x00), result[3]); // data
+    try std.testing.expectEqual(@as(u8, 0x2A), result[4]); // data
+    try std.testing.expectEqual(@as(u8, 0xE1), result[5]); // object end marker
+    try std.testing.expectEqual(@as(u8, 0xF1), result[6]); // array end marker
+
+    std.debug.print("[PASS] End markers 0xE1 and 0xF1 at exact correct positions\n", .{});
 }

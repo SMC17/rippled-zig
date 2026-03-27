@@ -223,7 +223,7 @@ pub const Clawback = struct {
     ) Clawback {
         return Clawback{
             .base = types.Transaction{
-                .tx_type = .trust_set, // Note: Clawback uses trust_set type in some contexts
+                .tx_type = .clawback,
                 .account = account,
                 .fee = fee,
                 .sequence = sequence,
@@ -267,7 +267,7 @@ pub const TicketCreate = struct {
     ) TicketCreate {
         return TicketCreate{
             .base = types.Transaction{
-                .tx_type = .trust_set, // Placeholder - need actual ticket type
+                .tx_type = .ticket_create,
                 .account = account,
                 .fee = fee,
                 .sequence = sequence,

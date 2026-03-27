@@ -13,6 +13,50 @@ pub const MAX_XRP: Drops = 100_000_000_000 * XRP;
 /// Minimum transaction fee (10 drops)
 pub const MIN_TX_FEE: Drops = 10;
 
+/// Maximum valid fee (1 XRP — anything above this is likely a mistake)
+pub const MAX_TX_FEE: Drops = 1 * XRP;
+
+/// Base reserve (10 XRP as of 2024)
+pub const BASE_RESERVE: Drops = 10 * XRP;
+
+/// Owner reserve per object (2 XRP as of 2024)
+pub const OWNER_RESERVE: Drops = 2 * XRP;
+
+/// Safe arithmetic for Drops — prevents overflow and enforces MAX_XRP invariant
+pub const SafeDrops = struct {
+    /// Add two Drops values, returning error on overflow or exceeding MAX_XRP
+    pub fn add(a: Drops, b: Drops) error{DropsOverflow}!Drops {
+        const result, const overflow = @addWithOverflow(a, b);
+        if (overflow != 0) return error.DropsOverflow;
+        if (result > MAX_XRP) return error.DropsOverflow;
+        return result;
+    }
+
+    /// Subtract Drops, returning error on underflow
+    pub fn sub(a: Drops, b: Drops) error{DropsUnderflow}!Drops {
+        if (b > a) return error.DropsUnderflow;
+        return a - b;
+    }
+
+    /// Validate a Drops value is within the valid range [0, MAX_XRP]
+    pub fn validate(drops: Drops) error{DropsOverflow}!Drops {
+        if (drops > MAX_XRP) return error.DropsOverflow;
+        return drops;
+    }
+
+    /// Calculate account reserve: base_reserve + (owner_count * owner_reserve)
+    pub fn accountReserve(owner_count: u32) error{DropsOverflow}!Drops {
+        const owner_total = @as(u64, owner_count) * OWNER_RESERVE;
+        return add(BASE_RESERVE, owner_total);
+    }
+
+    /// Check if an account can afford a fee (balance >= fee + reserve)
+    pub fn canAfford(balance: Drops, fee: Drops, reserve: Drops) bool {
+        const needed = add(fee, reserve) catch return false;
+        return balance >= needed;
+    }
+};
+
 /// Account address (20 bytes, displayed as base58 with checksum)
 pub const AccountID = [20]u8;
 
@@ -139,6 +183,7 @@ pub const TransactionType = enum(u16) {
     regular_key_set = 5,
     offer_create = 7,
     offer_cancel = 8,
+    ticket_create = 10,
     signer_list_set = 12,
     payment_channel_create = 13,
     payment_channel_fund = 14,
@@ -154,6 +199,7 @@ pub const TransactionType = enum(u16) {
     nftoken_create_offer = 27,
     nftoken_cancel_offer = 28,
     nftoken_accept_offer = 29,
+    clawback = 30,
 };
 
 /// Transaction result codes
@@ -289,4 +335,50 @@ test "IOUAmount zero" {
     const amt = IOUAmount.zero(usd, issuer);
     try std.testing.expectEqual(@as(u64, 0), amt.mantissa);
     try std.testing.expect(!amt.is_negative);
+}
+
+// ── SafeDrops tests ──
+
+test "SafeDrops add normal" {
+    const result = try SafeDrops.add(100, 200);
+    try std.testing.expectEqual(@as(Drops, 300), result);
+}
+
+test "SafeDrops add overflow u64" {
+    try std.testing.expectError(error.DropsOverflow, SafeDrops.add(std.math.maxInt(u64), 1));
+}
+
+test "SafeDrops add exceeds MAX_XRP" {
+    try std.testing.expectError(error.DropsOverflow, SafeDrops.add(MAX_XRP, 1));
+}
+
+test "SafeDrops sub normal" {
+    const result = try SafeDrops.sub(300, 100);
+    try std.testing.expectEqual(@as(Drops, 200), result);
+}
+
+test "SafeDrops sub underflow" {
+    try std.testing.expectError(error.DropsUnderflow, SafeDrops.sub(100, 200));
+}
+
+test "SafeDrops validate" {
+    const valid = try SafeDrops.validate(1000 * XRP);
+    try std.testing.expectEqual(@as(Drops, 1000 * XRP), valid);
+    try std.testing.expectError(error.DropsOverflow, SafeDrops.validate(MAX_XRP + 1));
+}
+
+test "SafeDrops accountReserve" {
+    // 0 objects: 10 XRP base
+    const r0 = try SafeDrops.accountReserve(0);
+    try std.testing.expectEqual(BASE_RESERVE, r0);
+    // 5 objects: 10 + 5*2 = 20 XRP
+    const r5 = try SafeDrops.accountReserve(5);
+    try std.testing.expectEqual(@as(Drops, 20 * XRP), r5);
+}
+
+test "SafeDrops canAfford" {
+    // 100 XRP balance, 12 drops fee, 10 XRP reserve -> can afford
+    try std.testing.expect(SafeDrops.canAfford(100 * XRP, 12, 10 * XRP));
+    // 10 XRP balance, 12 drops fee, 10 XRP reserve -> cannot afford
+    try std.testing.expect(!SafeDrops.canAfford(10 * XRP, 12, 10 * XRP));
 }

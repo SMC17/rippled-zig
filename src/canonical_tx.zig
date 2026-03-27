@@ -73,10 +73,16 @@ pub const CanonicalTransactionSerializer = struct {
             try self.serializer.addAccountID(1, account);
         }
 
-        // Destination (AccountID, field 3) — for Payment
+        // Destination (AccountID, field 3) — for Payment, EscrowCreate, AccountDelete
         if (tx.Destination) |dest_str| {
             const dest = try base58.Base58.decodeAccountID(self.allocator, dest_str);
             try self.serializer.addAccountID(3, dest);
+        }
+
+        // Owner (AccountID, field 4) — for EscrowFinish, EscrowCancel
+        if (tx.Owner) |owner_str| {
+            const owner = try base58.Base58.decodeAccountID(self.allocator, owner_str);
+            try self.serializer.addAccountID(4, owner);
         }
 
         // NOTE: SigningPubKey and TxnSignature are EXCLUDED for signing hash
@@ -134,6 +140,88 @@ pub const CanonicalTransactionSerializer = struct {
             if (tx.Domain) |domain| {
                 try self.serializer.addBlob(7, domain);
             }
+        } else if (std.mem.eql(u8, tx_type, "TrustSet")) {
+            // LimitAmount (Amount, field 3) — IOU amount
+            if (tx.LimitAmountIOU) |iou| {
+                try self.serializer.addIOUAmount(3, iou);
+            } else if (tx.LimitAmount) |amount_str| {
+                const drops = try parseDrops(amount_str);
+                try self.serializer.addXRPAmount(3, drops);
+            }
+            // QualityIn (UInt32, field 20) — optional
+            if (tx.QualityIn) |qi| {
+                try self.serializer.addUInt32(20, qi);
+            }
+            // QualityOut (UInt32, field 21) — optional
+            if (tx.QualityOut) |qo| {
+                try self.serializer.addUInt32(21, qo);
+            }
+        } else if (std.mem.eql(u8, tx_type, "EscrowCreate")) {
+            // Amount (Amount, field 1)
+            if (tx.Amount) |amount_str| {
+                const drops = try parseDrops(amount_str);
+                try self.serializer.addXRPAmount(1, drops);
+            }
+            // FinishAfter (UInt32, field 36) — optional
+            if (tx.FinishAfter) |fa| {
+                try self.serializer.addUInt32(36, fa);
+            }
+            // CancelAfter (UInt32, field 37) — optional
+            if (tx.CancelAfter) |ca| {
+                try self.serializer.addUInt32(37, ca);
+            }
+            // Condition (Blob, field 25) — optional
+            if (tx.Condition) |cond| {
+                try self.serializer.addBlob(25, cond);
+            }
+        } else if (std.mem.eql(u8, tx_type, "EscrowFinish")) {
+            // OfferSequence (UInt32, field 25)
+            if (tx.OfferSequence) |seq| {
+                try self.serializer.addUInt32(25, seq);
+            }
+            // Condition (Blob, field 25) — optional
+            if (tx.Condition) |cond| {
+                try self.serializer.addBlob(25, cond);
+            }
+            // Fulfillment (Blob, field 16) — optional
+            if (tx.Fulfillment) |ful| {
+                try self.serializer.addBlob(16, ful);
+            }
+        } else if (std.mem.eql(u8, tx_type, "EscrowCancel")) {
+            // OfferSequence (UInt32, field 25)
+            if (tx.OfferSequence) |seq| {
+                try self.serializer.addUInt32(25, seq);
+            }
+        } else if (std.mem.eql(u8, tx_type, "SetRegularKey")) {
+            // RegularKey (AccountID, field 8) — optional (null removes regular key)
+            if (tx.RegularKey) |key_str| {
+                const key = try base58.Base58.decodeAccountID(self.allocator, key_str);
+                try self.serializer.addAccountID(8, key);
+            }
+        } else if (std.mem.eql(u8, tx_type, "SignerListSet")) {
+            // SignerQuorum (UInt32, field 35)
+            if (tx.SignerQuorum) |quorum| {
+                try self.serializer.addUInt32(35, quorum);
+            }
+            // SignerEntries would be STArray — handled separately
+        } else if (std.mem.eql(u8, tx_type, "TicketCreate")) {
+            // TicketCount (UInt32, field 41)
+            if (tx.TicketCount) |count| {
+                try self.serializer.addUInt32(41, count);
+            }
+        } else if (std.mem.eql(u8, tx_type, "DepositPreauth")) {
+            // Authorize (AccountID, field 9) — optional
+            if (tx.Authorize) |auth_str| {
+                const auth = try base58.Base58.decodeAccountID(self.allocator, auth_str);
+                try self.serializer.addAccountID(9, auth);
+            }
+            // Unauthorize (AccountID, field 10) — optional
+            if (tx.Unauthorize) |unauth_str| {
+                const unauth = try base58.Base58.decodeAccountID(self.allocator, unauth_str);
+                try self.serializer.addAccountID(10, unauth);
+            }
+        } else if (std.mem.eql(u8, tx_type, "AccountDelete")) {
+            // Destination and DestinationTag are handled in common fields
         }
     }
 
@@ -181,8 +269,35 @@ pub const TransactionJSON = struct {
     TransferRate: ?u32 = null,
     Domain: ?[]const u8 = null,
 
-    // Legacy — kept for backward compat
+    // TrustSet fields
+    LimitAmount: ?[]const u8 = null, // XRP drops string for now; IOU handled via LimitAmountIOU
+    LimitAmountIOU: ?types.IOUAmount = null, // IOU amount for TrustSet
+    QualityIn: ?u32 = null,
+    QualityOut: ?u32 = null,
+
+    // EscrowCreate fields
+    FinishAfter: ?u32 = null,
+    CancelAfter: ?u32 = null,
+    Condition: ?[]const u8 = null, // Blob
+
+    // EscrowFinish fields
+    Owner: ?[]const u8 = null, // AccountID (base58)
+    Fulfillment: ?[]const u8 = null, // Blob
+
+    // SetRegularKey fields
+    RegularKey: ?[]const u8 = null, // AccountID (base58)
+
+    // SignerListSet fields (SignerEntries needs STArray — added separately)
     SignerQuorum: ?u32 = null,
+
+    // TicketCreate fields
+    TicketCount: ?u32 = null,
+
+    // DepositPreauth fields
+    Authorize: ?[]const u8 = null, // AccountID (base58)
+    Unauthorize: ?[]const u8 = null, // AccountID (base58)
+
+    // Legacy — kept for backward compat
     SignerEntries: ?[]const u8 = null,
 };
 
@@ -197,6 +312,7 @@ fn txTypeToCode(tx_type: []const u8) u16 {
     if (std.mem.eql(u8, tx_type, "NickNameSet")) return 6;
     if (std.mem.eql(u8, tx_type, "OfferCreate")) return 7;
     if (std.mem.eql(u8, tx_type, "OfferCancel")) return 8;
+    if (std.mem.eql(u8, tx_type, "TicketCreate")) return 10;
     if (std.mem.eql(u8, tx_type, "SignerListSet")) return 12;
     if (std.mem.eql(u8, tx_type, "PaymentChannelCreate")) return 13;
     if (std.mem.eql(u8, tx_type, "PaymentChannelFund")) return 14;
@@ -204,12 +320,15 @@ fn txTypeToCode(tx_type: []const u8) u16 {
     if (std.mem.eql(u8, tx_type, "CheckCreate")) return 16;
     if (std.mem.eql(u8, tx_type, "CheckCash")) return 17;
     if (std.mem.eql(u8, tx_type, "CheckCancel")) return 18;
+    if (std.mem.eql(u8, tx_type, "DepositPreauth")) return 19;
     if (std.mem.eql(u8, tx_type, "TrustSet")) return 20;
+    if (std.mem.eql(u8, tx_type, "AccountDelete")) return 21;
     if (std.mem.eql(u8, tx_type, "NFTokenMint")) return 25;
     if (std.mem.eql(u8, tx_type, "NFTokenBurn")) return 26;
     if (std.mem.eql(u8, tx_type, "NFTokenCreateOffer")) return 27;
     if (std.mem.eql(u8, tx_type, "NFTokenCancelOffer")) return 28;
     if (std.mem.eql(u8, tx_type, "NFTokenAcceptOffer")) return 29;
+    if (std.mem.eql(u8, tx_type, "Clawback")) return 30;
     return 0; // Default to Payment
 }
 
@@ -337,4 +456,253 @@ test "deterministic output for same inputs" {
 
     try std.testing.expectEqualSlices(u8, out1, out2);
     std.debug.print("[PASS] Deterministic serialization output\n", .{});
+}
+
+test "TrustSet transaction serialization" {
+    const allocator = std.testing.allocator;
+
+    var ser = try CanonicalTransactionSerializer.init(allocator);
+    defer ser.deinit();
+
+    const usd = try types.CurrencyCode.fromStandard("USD");
+    const issuer = [_]u8{0xAA} ** 20;
+    const iou = types.IOUAmount{
+        .mantissa = 1_000_000_000_000_000, // 1.0
+        .exponent = 0,
+        .is_negative = false,
+        .currency = usd,
+        .issuer = issuer,
+    };
+
+    const tx = TransactionJSON{
+        .TransactionType = "TrustSet",
+        .Sequence = 5,
+        .Fee = "12",
+        .LimitAmountIOU = iou,
+        .QualityIn = 1000000000,
+        .QualityOut = 1000000000,
+    };
+
+    const serialized = try ser.serializeForSigning(tx);
+    defer allocator.free(serialized);
+
+    try std.testing.expect(serialized.len > 0);
+    // TransactionType = 20 → 0x0014
+    try std.testing.expectEqual(@as(u8, 0x12), serialized[0]);
+    try std.testing.expectEqual(@as(u8, 0x00), serialized[1]);
+    try std.testing.expectEqual(@as(u8, 0x14), serialized[2]);
+
+    std.debug.print("[PASS] TrustSet transaction serialization\n", .{});
+}
+
+test "EscrowCreate transaction serialization" {
+    const allocator = std.testing.allocator;
+
+    var ser = try CanonicalTransactionSerializer.init(allocator);
+    defer ser.deinit();
+
+    const tx = TransactionJSON{
+        .TransactionType = "EscrowCreate",
+        .Sequence = 1,
+        .Fee = "12",
+        .Amount = "1000000",
+        .FinishAfter = 700000000,
+        .CancelAfter = 700100000,
+        .Condition = &[_]u8{ 0xA0, 0x25, 0x80, 0x20 },
+    };
+
+    const serialized = try ser.serializeForSigning(tx);
+    defer allocator.free(serialized);
+
+    try std.testing.expect(serialized.len > 0);
+    // TransactionType = 1 → 0x0001
+    try std.testing.expectEqual(@as(u8, 0x12), serialized[0]);
+    try std.testing.expectEqual(@as(u8, 0x00), serialized[1]);
+    try std.testing.expectEqual(@as(u8, 0x01), serialized[2]);
+
+    std.debug.print("[PASS] EscrowCreate transaction serialization\n", .{});
+}
+
+test "EscrowFinish transaction serialization" {
+    const allocator = std.testing.allocator;
+
+    var ser = try CanonicalTransactionSerializer.init(allocator);
+    defer ser.deinit();
+
+    const tx = TransactionJSON{
+        .TransactionType = "EscrowFinish",
+        .Sequence = 2,
+        .Fee = "12",
+        .OfferSequence = 1,
+        .Fulfillment = &[_]u8{ 0xA0, 0x05, 0x80, 0x03 },
+    };
+
+    const serialized = try ser.serializeForSigning(tx);
+    defer allocator.free(serialized);
+
+    try std.testing.expect(serialized.len > 0);
+    // TransactionType = 2 → 0x0002
+    try std.testing.expectEqual(@as(u8, 0x12), serialized[0]);
+    try std.testing.expectEqual(@as(u8, 0x00), serialized[1]);
+    try std.testing.expectEqual(@as(u8, 0x02), serialized[2]);
+
+    std.debug.print("[PASS] EscrowFinish transaction serialization\n", .{});
+}
+
+test "EscrowCancel transaction serialization" {
+    const allocator = std.testing.allocator;
+
+    var ser = try CanonicalTransactionSerializer.init(allocator);
+    defer ser.deinit();
+
+    const tx = TransactionJSON{
+        .TransactionType = "EscrowCancel",
+        .Sequence = 3,
+        .Fee = "12",
+        .OfferSequence = 1,
+    };
+
+    const serialized = try ser.serializeForSigning(tx);
+    defer allocator.free(serialized);
+
+    try std.testing.expect(serialized.len > 0);
+    // TransactionType = 4 → 0x0004
+    try std.testing.expectEqual(@as(u8, 0x12), serialized[0]);
+    try std.testing.expectEqual(@as(u8, 0x00), serialized[1]);
+    try std.testing.expectEqual(@as(u8, 0x04), serialized[2]);
+
+    std.debug.print("[PASS] EscrowCancel transaction serialization\n", .{});
+}
+
+test "SetRegularKey transaction serialization" {
+    const allocator = std.testing.allocator;
+
+    var ser = try CanonicalTransactionSerializer.init(allocator);
+    defer ser.deinit();
+
+    const tx = TransactionJSON{
+        .TransactionType = "SetRegularKey",
+        .Sequence = 4,
+        .Fee = "12",
+    };
+
+    const serialized = try ser.serializeForSigning(tx);
+    defer allocator.free(serialized);
+
+    try std.testing.expect(serialized.len > 0);
+    // TransactionType = 5 → 0x0005
+    try std.testing.expectEqual(@as(u8, 0x12), serialized[0]);
+    try std.testing.expectEqual(@as(u8, 0x00), serialized[1]);
+    try std.testing.expectEqual(@as(u8, 0x05), serialized[2]);
+
+    std.debug.print("[PASS] SetRegularKey transaction serialization\n", .{});
+}
+
+test "SignerListSet transaction serialization" {
+    const allocator = std.testing.allocator;
+
+    var ser = try CanonicalTransactionSerializer.init(allocator);
+    defer ser.deinit();
+
+    const tx = TransactionJSON{
+        .TransactionType = "SignerListSet",
+        .Sequence = 6,
+        .Fee = "12",
+        .SignerQuorum = 2,
+    };
+
+    const serialized = try ser.serializeForSigning(tx);
+    defer allocator.free(serialized);
+
+    try std.testing.expect(serialized.len > 0);
+    // TransactionType = 12 → 0x000C
+    try std.testing.expectEqual(@as(u8, 0x12), serialized[0]);
+    try std.testing.expectEqual(@as(u8, 0x00), serialized[1]);
+    try std.testing.expectEqual(@as(u8, 0x0C), serialized[2]);
+
+    std.debug.print("[PASS] SignerListSet transaction serialization\n", .{});
+}
+
+test "TicketCreate transaction serialization" {
+    const allocator = std.testing.allocator;
+
+    var ser = try CanonicalTransactionSerializer.init(allocator);
+    defer ser.deinit();
+
+    const tx = TransactionJSON{
+        .TransactionType = "TicketCreate",
+        .Sequence = 7,
+        .Fee = "12",
+        .TicketCount = 5,
+    };
+
+    const serialized = try ser.serializeForSigning(tx);
+    defer allocator.free(serialized);
+
+    try std.testing.expect(serialized.len > 0);
+    // TransactionType = 10 → 0x000A
+    try std.testing.expectEqual(@as(u8, 0x12), serialized[0]);
+    try std.testing.expectEqual(@as(u8, 0x00), serialized[1]);
+    try std.testing.expectEqual(@as(u8, 0x0A), serialized[2]);
+
+    std.debug.print("[PASS] TicketCreate transaction serialization\n", .{});
+}
+
+test "DepositPreauth transaction serialization" {
+    const allocator = std.testing.allocator;
+
+    var ser = try CanonicalTransactionSerializer.init(allocator);
+    defer ser.deinit();
+
+    const tx = TransactionJSON{
+        .TransactionType = "DepositPreauth",
+        .Sequence = 8,
+        .Fee = "12",
+    };
+
+    const serialized = try ser.serializeForSigning(tx);
+    defer allocator.free(serialized);
+
+    try std.testing.expect(serialized.len > 0);
+    // TransactionType = 19 → 0x0013
+    try std.testing.expectEqual(@as(u8, 0x12), serialized[0]);
+    try std.testing.expectEqual(@as(u8, 0x00), serialized[1]);
+    try std.testing.expectEqual(@as(u8, 0x13), serialized[2]);
+
+    std.debug.print("[PASS] DepositPreauth transaction serialization\n", .{});
+}
+
+test "AccountDelete transaction serialization" {
+    const allocator = std.testing.allocator;
+
+    var ser = try CanonicalTransactionSerializer.init(allocator);
+    defer ser.deinit();
+
+    const tx = TransactionJSON{
+        .TransactionType = "AccountDelete",
+        .Sequence = 300,
+        .Fee = "5000000",
+        .DestinationTag = 42,
+    };
+
+    const serialized = try ser.serializeForSigning(tx);
+    defer allocator.free(serialized);
+
+    try std.testing.expect(serialized.len > 0);
+    // TransactionType = 21 → 0x0015
+    try std.testing.expectEqual(@as(u8, 0x12), serialized[0]);
+    try std.testing.expectEqual(@as(u8, 0x00), serialized[1]);
+    try std.testing.expectEqual(@as(u8, 0x15), serialized[2]);
+
+    std.debug.print("[PASS] AccountDelete transaction serialization\n", .{});
+}
+
+test "Clawback type code" {
+    // Verify Clawback maps to type 30
+    try std.testing.expectEqual(@as(u16, 30), txTypeToCode("Clawback"));
+}
+
+test "TicketCreate type code" {
+    // Verify TicketCreate maps to type 10
+    try std.testing.expectEqual(@as(u16, 10), txTypeToCode("TicketCreate"));
 }

@@ -9,6 +9,7 @@ const serialization = @import("serialization.zig");
 const secp256k1_binding = @import("secp256k1_binding.zig");
 const secp256k1 = @import("secp256k1.zig");
 const ripemd160 = @import("ripemd160.zig");
+const ledger_objects = @import("ledger_objects.zig");
 const benchmark = @import("benchmark.zig");
 const wallet_mod = @import("wallet.zig");
 
@@ -368,12 +369,17 @@ comptime {
     _ = @import("determinism_check.zig");
     _ = @import("parity_check.zig");
     _ = @import("merkle.zig");
+    _ = @import("shamap.zig");
     _ = @import("amendments.zig");
     _ = @import("benchmark.zig");
     _ = @import("xrpl_time.zig");
     _ = @import("currency.zig");
+    _ = @import("crypto_utils.zig");
+    _ = @import("fee_engine.zig");
     _ = @import("wallet.zig");
     _ = @import("field_defs.zig");
+    _ = @import("json_tx.zig");
+    _ = @import("ledger_objects.zig");
 
     // Experimental test suites
     if (has_experimental) {
