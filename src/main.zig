@@ -12,6 +12,7 @@ const ripemd160 = @import("ripemd160.zig");
 const ledger_objects = @import("ledger_objects.zig");
 const benchmark = @import("benchmark.zig");
 const wallet_mod = @import("wallet.zig");
+const ai_fee = @import("ai_fee.zig");
 
 // Experimental node modules — only imported when -Dexperimental=true
 const has_experimental = build_options.experimental;
@@ -51,6 +52,8 @@ pub fn main() !void {
         printVersion();
     } else if (std.mem.eql(u8, command, "help")) {
         printUsage();
+    } else if (std.mem.eql(u8, command, "fee-estimate")) {
+        try ai_fee.cmdFeeEstimate();
     } else if (has_experimental and std.mem.eql(u8, command, "node")) {
         try cmdNodeRun(allocator);
     } else {
@@ -87,6 +90,7 @@ fn printUsage() void {
         \\  verify-sig      Verify a transaction signature
         \\  encode-address  Encode/decode XRPL base58check addresses
         \\  benchmark       Run performance benchmark suite
+        \\  fee-estimate    Show AI-powered fee estimation report
         \\  version         Show version and build info
         \\  help            Show this help
         \\
@@ -343,6 +347,7 @@ test "basic toolkit imports" {
     _ = serialization;
     _ = ripemd160;
     _ = wallet_mod;
+    _ = ai_fee;
 }
 
 test "version string" {
@@ -381,6 +386,20 @@ comptime {
     _ = @import("field_defs.zig");
     _ = @import("json_tx.zig");
     _ = @import("ledger_objects.zig");
+    _ = @import("trust_line.zig");
+    _ = @import("memo.zig");
+    _ = @import("clawback.zig");
+    _ = @import("did.zig");
+    _ = @import("ledger_header.zig");
+    _ = @import("multisig.zig");
+    _ = @import("amm.zig");
+    _ = @import("prometheus.zig");
+    _ = @import("lru_cache.zig");
+    _ = @import("account_cache.zig");
+    _ = @import("pathfinding.zig");
+    _ = @import("tx_simulator.zig");
+    _ = @import("ai_fee.zig");
+    _ = @import("nft.zig");
 
     // Experimental test suites
     if (has_experimental) {

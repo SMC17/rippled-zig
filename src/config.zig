@@ -75,21 +75,34 @@ pub const Config = struct {
     }
 };
 
-/// Log levels
-pub const LogLevel = enum {
-    debug,
-    info,
-    warn,
-    @"error",
-    fatal,
+/// Log levels (matching syslog severity, ascending)
+pub const LogLevel = enum(u3) {
+    trace = 0,
+    debug = 1,
+    info = 2,
+    warn = 3,
+    @"error" = 4,
+    fatal = 5,
 
     pub fn fromString(str: []const u8) ?LogLevel {
+        if (std.mem.eql(u8, str, "trace")) return .trace;
         if (std.mem.eql(u8, str, "debug")) return .debug;
         if (std.mem.eql(u8, str, "info")) return .info;
         if (std.mem.eql(u8, str, "warn")) return .warn;
         if (std.mem.eql(u8, str, "error")) return .@"error";
         if (std.mem.eql(u8, str, "fatal")) return .fatal;
         return null;
+    }
+
+    pub fn asText(self: LogLevel) []const u8 {
+        return switch (self) {
+            .trace => "trace",
+            .debug => "debug",
+            .info => "info",
+            .warn => "warn",
+            .@"error" => "error",
+            .fatal => "fatal",
+        };
     }
 };
 
