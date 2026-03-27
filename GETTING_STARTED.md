@@ -1,10 +1,11 @@
 # Getting Started with rippled-zig
 
-This guide will help you get started with the Zig-based XRP Ledger daemon implementation.
+This guide will help you get started with the toolkit-first v1 release path.
 
 ## Prerequisites
 
-- Zig 0.15.1 or later
+- Zig `0.14.1`
+- `libsecp256k1` for strict verification paths
 - Basic understanding of the XRP Ledger
 - Familiarity with Zig (optional but helpful)
 
@@ -16,40 +17,50 @@ This guide will help you get started with the Zig-based XRP Ledger daemon implem
 cd /Users/seancollins/rippled-zig
 ```
 
-### 2. Build the project
+### 2. Confirm the toolchain
 
 ```bash
-./zig build
+zig version
 ```
 
-### 3. Run tests
+Expected output:
 
 ```bash
-./zig build test
+0.14.1
 ```
 
-### 4. Run the daemon
+### 3. Build the project
+
+```bash
+zig build
+```
+
+### 4. Run tests
+
+```bash
+zig build test
+```
+
+### 5. Run the standard local entrypoint
 
 ```bash
 scripts/run.sh
 ```
 
-## Project Structure Overview
+## Product Scope Overview
 
 ```
 rippled-zig/
 ├── src/
-│   ├── main.zig          - Entry point and node coordination
-│   ├── types.zig         - Core XRP Ledger types (Account, Amount, Currency)
-│   ├── crypto.zig        - Cryptographic operations (Ed25519, hashing)
-│   ├── ledger.zig        - Ledger management and state
-│   ├── consensus.zig     - XRP Ledger Consensus Protocol
-│   ├── transaction.zig   - Transaction processing and validation
-│   ├── network.zig       - P2P networking (partial)
+│   ├── main.zig          - current local entrypoint
+│   ├── transaction.zig   - transaction modeling and serialization entrypoints
+│   ├── canonical_tx.zig  - canonical XRPL field ordering and encoding
+│   ├── crypto.zig        - signing-hash generation and key utilities
+│   ├── secp256k1*.zig    - signature verification paths
 │   ├── rpc.zig           - JSON-RPC server + live method dispatch
-│   └── storage.zig       - Ledger storage and caching
+│   └── rpc_methods.zig   - selected live RPC method handling
 ├── build.zig            - Build configuration
-├── scripts/run.sh       - Standard local run entrypoint
+├── scripts/run.sh       - Standard local entrypoint
 ├── scripts/gates/       - Quality/parity/conformance/security gates
 ├── README.md            - Main documentation
 └── LICENSE              - ISC License
@@ -114,7 +125,7 @@ scripts/run.sh
 
 ### 4. Check for Issues
 
-If you encounter build errors related to Zig version compatibility, ensure you're using Zig 0.15.1 or later:
+If you encounter build errors related to Zig version compatibility, ensure you're using Zig `0.14.1` exactly:
 
 ```bash
 zig version
@@ -129,26 +140,22 @@ Read these first so your automation behavior matches the project's current safet
 
 ## Current Limitations
 
-This is an early-stage implementation with the following limitations:
+The active v1 release path has the following limitations:
 
-- [ ] P2P/network sync paths are incomplete for full compatibility
-- [ ] `submit` supports a minimal blob path, not full XRPL serialization
-- [ ] Storage is simplified (no RocksDB/NuDB integration)
-- [ ] Consensus rounds are simplified vs production behavior
+- [ ] Canonical XRPL codec work is incomplete for the full supported set
+- [ ] `submit` remains intentionally narrow on the release path
+- [ ] Strict verification depends on `libsecp256k1`
+- [ ] Experimental runtime/peer modules remain out of v1 scope
 - [ ] No mainnet-ready hardening or security audit evidence
 
 ## Next Steps for Development
 
-1. Implement full P2P protocol
-2. Add RPC/WebSocket server with all API methods
-3. Integrate proper database backend (consider RocksDB bindings)
-4. Implement complete consensus rounds with validator communication
-5. Add transaction validation for all transaction types
-6. Implement ledger history fetching and replay
-7. Add configuration file support
-8. Add logging system
-9. Performance optimization
-10. Security audits
+1. Close `#46`, `#47`, and `#61` to finish the scope freeze and toolchain parity pass
+2. Close `#48`-`#50` to make Gate B represent the real v1 codec surface
+3. Close `#51`-`#54` to lock crypto and verification evidence
+4. Close `#55`-`#57` to freeze and validate the live RPC subset
+5. Close `#58`-`#60` to ship the public API, CLI, and examples
+6. Close `#62` to complete the release checklist and signed artifact path
 
 ## Learning Resources
 

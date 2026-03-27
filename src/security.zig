@@ -68,7 +68,7 @@ pub const Security = struct {
             var it = self.limits.iterator();
             while (it.next()) |entry| {
                 if (now - entry.value_ptr.window_start > self.window_ms) {
-                    to_remove.append(self.allocator, entry.key_ptr.*) catch continue;
+                    to_remove.append(entry.key_ptr.*) catch continue;
                 }
             }
 

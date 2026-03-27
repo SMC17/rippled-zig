@@ -1,0 +1,73 @@
+{
+  "version": "1.0.0",
+  "description": "Pinned canonical serialization fixtures for the v1 supported transaction set",
+  "generated_by": "rippled-zig gate-b",
+  "fixtures": [
+    {
+      "name": "payment_basic",
+      "transaction_type": "Payment",
+      "fields": {
+        "TransactionType": 0,
+        "Sequence": 1,
+        "DestinationTag": 7,
+        "Amount_drops": 100,
+        "Fee_drops": 10,
+        "Account": "0101010101010101010101010101010101010101",
+        "Destination": "0202020202020202020202020202020202020202"
+      },
+      "expected_hex": "12000024000000012e0000000761400000000000006468400000000000000a8114010101010101010101010101010101010101010183140202020202020202020202020202020202020202",
+      "expected_length": 75
+    },
+    {
+      "name": "account_set_with_flags",
+      "transaction_type": "AccountSet",
+      "fields": {
+        "TransactionType": 3,
+        "Sequence": 2,
+        "SetFlag": 2,
+        "ClearFlag": 1,
+        "TransferRate": 7,
+        "Fee_drops": 10,
+        "Account": "0303030303030303030303030303030303030303"
+      },
+      "expected_hex": "1200032400000002250000000226000000012b0000000768400000000000000a81140303030303030303030303030303030303030303",
+      "expected_length": 54
+    },
+    {
+      "name": "offer_create_with_expiration",
+      "transaction_type": "OfferCreate",
+      "fields": {
+        "TransactionType": 7,
+        "Sequence": 3,
+        "Expiration": 9,
+        "TakerPays_drops": 200,
+        "TakerGets_drops": 300,
+        "Fee_drops": 10,
+        "Account": "0404040404040404040404040404040404040404"
+      },
+      "expected_hex": "12000724000000032a000000096140000000000000c862400000000000012c68400000000000000a81140404040404040404040404040404040404040404",
+      "expected_length": 62
+    },
+    {
+      "name": "offer_cancel",
+      "transaction_type": "OfferCancel",
+      "fields": {
+        "TransactionType": 8,
+        "Sequence": 4,
+        "OfferSequence": 55,
+        "Fee_drops": 10,
+        "Account": "0505050505050505050505050505050505050505"
+      },
+      "expected_hex": "1200082400000004290000003768400000000000000a81140505050505050505050505050505050505050505",
+      "expected_length": 44
+    }
+  ],
+  "encoding_rules": {
+    "field_ordering": "Sort by (type_code, field_code) ascending",
+    "field_header": "type < 16 && field < 16: (type << 4) | field",
+    "amount_xrp": "0x4000000000000000 | drops",
+    "account_id": "VL prefix (0x14) + 20 bytes",
+    "uint16": "big-endian 2 bytes",
+    "uint32": "big-endian 4 bytes"
+  }
+}

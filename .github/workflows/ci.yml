@@ -2,107 +2,495 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      run_live_testnet:
+        description: "Run live testnet conformance (Gate D, requires secrets)"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ZIG_VERSION: "0.14.1"
 
 jobs:
-  test:
-    name: Test Suite
+  # ---------------------------------------------------------------------------
+  # Gate A -- Build / Test / Lint / Format
+  # ---------------------------------------------------------------------------
+  gate-a:
+    name: "Gate A [${{ matrix.os }}]"
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Zig
-      uses: goto-bus-stop/setup-zig@v2
-      with:
-        version: 0.15.1
-    
-    - name: Build
-      run: zig build
-    
-    - name: Run Tests
-      run: zig build test
-    
-    - name: Check Formatting
-      run: zig fmt --check src/ tests/
 
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig ${{ env.ZIG_VERSION }}
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Install libsecp256k1
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsecp256k1-dev
+
+      - name: Verify toolchain version
+        run: |
+          actual="$(zig version)"
+          printf 'zig version: %s\n' "$actual"
+          test "$actual" = "${{ env.ZIG_VERSION }}"
+
+      - name: Run Gate A
+        run: |
+          chmod +x scripts/gates/gate_a.sh
+          scripts/gates/gate_a.sh artifacts/gate-a
+
+      - name: Upload Gate A artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-a-${{ matrix.os }}
+          path: artifacts/gate-a
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # WASM Build
+  # ---------------------------------------------------------------------------
   wasm:
     name: WASM Build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [gate-a]
 
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Setup Zig
-      uses: goto-bus-stop/setup-zig@v2
-      with:
-        version: 0.15.1
-
-    - name: Build WASM targets
-      run: zig build wasm
-
-    - name: Verify WASM artifacts
-      run: |
-        test -f zig-out/wasm/protocol_kernel.wasm
-        test -f zig-out/wasm/hook_template.wasm
-
-    - name: Hook WASM export smoke check
-      run: |
-        chmod +x scripts/wasm/check_hook_exports.sh
-        scripts/wasm/check_hook_exports.sh zig-out/wasm/hook_template.wasm artifacts/wasm-hook-export-check
-
-  release-provenance:
-    name: Release checksum provenance
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Zig
+
+      - name: Setup Zig ${{ env.ZIG_VERSION }}
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.15.1
-      - name: Build release
-        run: zig build -Doptimize=ReleaseSafe && zig build wasm
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Build WASM targets
+        run: zig build wasm
+
+      - name: Verify WASM artifacts
+        run: |
+          test -f zig-out/wasm/protocol_kernel.wasm
+          test -f zig-out/wasm/hook_template.wasm
+
+      - name: Hook WASM export smoke check
+        run: |
+          chmod +x scripts/wasm/check_hook_exports.sh
+          scripts/wasm/check_hook_exports.sh zig-out/wasm/hook_template.wasm artifacts/wasm-hook-export-check
+
+      - name: Upload WASM artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-build
+          path: zig-out/wasm
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Gate B -- Deterministic Serialization / Fixture Pinning
+  # ---------------------------------------------------------------------------
+  gate-b:
+    name: Gate B - Determinism
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [gate-a]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig ${{ env.ZIG_VERSION }}
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Install libsecp256k1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsecp256k1-dev
+
+      - name: Run Gate B
+        run: |
+          chmod +x scripts/gates/gate_b.sh
+          scripts/gates/gate_b.sh artifacts/gate-b
+
+      - name: Upload Gate B artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-b
+          path: artifacts/gate-b
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Gate C -- RPC Contract Parity
+  # ---------------------------------------------------------------------------
+  gate-c:
+    name: Gate C - Parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [gate-b]
+    env:
+      GATE_C_STRICT_CRYPTO: "true"
+      GATE_C_TREND_INPUT_DIR: artifacts/gate-c
+      GATE_C_TREND_MIN_SUCCESS_RATE: ${{ github.event_name == 'schedule' && '99' || '95' }}
+      GATE_C_TREND_MIN_AVG_POSITIVE_VECTORS: "3"
+      GATE_C_TREND_MIN_AVG_SIGNING_DOMAIN_CHECKS: "3"
+      GATE_C_TREND_MIN_CONSEC_STRICT_PASSES: ${{ github.event_name == 'schedule' && '3' || '0' }}
+      GATE_C_FAIL_ON_INSUFFICIENT_TREND: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig ${{ env.ZIG_VERSION }}
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Install libsecp256k1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsecp256k1-dev
+
+      - name: Run Gate C
+        run: |
+          chmod +x scripts/gates/gate_c.sh
+          scripts/gates/gate_c.sh artifacts/gate-c
+
+      - name: Upload Gate C artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-c
+          path: artifacts/gate-c
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Gate D -- Live Testnet Conformance (optional, skippable)
+  # ---------------------------------------------------------------------------
+  gate-d:
+    name: Gate D - Live Testnet
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [gate-c]
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_live_testnet == 'true')
+    env:
+      TESTNET_RPC_URL: ${{ secrets.TESTNET_RPC_URL }}
+      TESTNET_WS_URL: ${{ secrets.TESTNET_WS_URL }}
+      GATE_D_ALLOW_SKIP_NO_SECRETS: "true"
+      GATE_D_PROFILE: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
+      GATE_D_MAX_LATENCY_S: ${{ github.event_name == 'schedule' && '3' || '5' }}
+      GATE_D_TREND_INPUT_DIR: artifacts/gate-d
+      GATE_D_TREND_MIN_SUCCESS_RATE: ${{ github.event_name == 'schedule' && '99' || '95' }}
+      GATE_D_TREND_MAX_P95_SERVER_INFO_S: ${{ github.event_name == 'schedule' && '3' || '5' }}
+      GATE_D_TREND_MAX_P95_FEE_S: ${{ github.event_name == 'schedule' && '3' || '5' }}
+      GATE_D_TREND_MAX_P95_LEDGER_S: ${{ github.event_name == 'schedule' && '3' || '5' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig ${{ env.ZIG_VERSION }}
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Run Gate D
+        run: |
+          chmod +x scripts/gates/gate_d.sh
+          scripts/gates/gate_d.sh artifacts/gate-d
+
+      - name: Upload Gate D artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-d
+          path: artifacts/gate-d
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Gate E -- Security / Fuzz / Static Analysis
+  # ---------------------------------------------------------------------------
+  gate-e:
+    name: Gate E - Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [gate-c]
+    env:
+      GATE_E_PROFILE: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
+      GATE_E_MIN_FUZZ_CASES: ${{ github.event_name == 'schedule' && '100000' || '25000' }}
+      GATE_E_MAX_RUNTIME_S: ${{ github.event_name == 'schedule' && '60' || '20' }}
+      GATE_E_TREND_INPUT_DIR: artifacts/gate-e
+      GATE_E_TREND_MIN_SUCCESS_RATE: ${{ github.event_name == 'schedule' && '99' || '95' }}
+      GATE_E_TREND_MIN_CRASH_FREE_RATE: "100"
+      GATE_E_TREND_MAX_P95_RUNTIME_S: ${{ github.event_name == 'schedule' && '60' || '20' }}
+      GATE_E_TREND_MIN_AVG_FUZZ_CASES: ${{ github.event_name == 'schedule' && '100000' || '25000' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig ${{ env.ZIG_VERSION }}
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Install libsecp256k1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsecp256k1-dev
+
+      - name: Run Gate E
+        run: |
+          chmod +x scripts/gates/gate_e.sh
+          scripts/gates/gate_e.sh artifacts/gate-e
+
+      - name: Upload Gate E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-e
+          path: artifacts/gate-e
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Sim -- Deterministic Local Cluster Simulation
+  # ---------------------------------------------------------------------------
+  gate-sim:
+    name: Sim - Local Cluster
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [gate-c]
+    env:
+      GATE_SIM_PROFILE: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
+      SIM_NODES: ${{ github.event_name == 'schedule' && '7' || '5' }}
+      SIM_ROUNDS: ${{ github.event_name == 'schedule' && '50' || '20' }}
+      SIM_SEED: "xrpl-agent-lab-v1"
+      SIM_BASE_LEDGER_SEQ: "1000000"
+      SIM_BASE_LATENCY_MS: "40"
+      SIM_JITTER_MS: "25"
+      GATE_SIM_MIN_SUCCESS_RATE: ${{ github.event_name == 'schedule' && '35' || '30' }}
+      GATE_SIM_MAX_AVG_LATENCY_MS: ${{ github.event_name == 'schedule' && '60' || '70' }}
+      GATE_SIM_MIN_LATEST_LEDGER_SEQ: ${{ github.event_name == 'schedule' && '1000050' || '1000020' }}
+      GATE_SIM_TREND_INPUT_DIR: artifacts/sim-local
+      GATE_SIM_TREND_MIN_SUCCESS_RATE: ${{ github.event_name == 'schedule' && '99' || '95' }}
+      GATE_SIM_TREND_MIN_AVG_SUCCESS_RATE: ${{ github.event_name == 'schedule' && '35' || '30' }}
+      GATE_SIM_TREND_MAX_P95_AVG_LATENCY_MS: ${{ github.event_name == 'schedule' && '60' || '75' }}
+      GATE_SIM_TREND_MIN_AVG_NODES: ${{ github.event_name == 'schedule' && '7' || '5' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Gate Sim
+        run: |
+          chmod +x scripts/gates/gate_sim.sh
+          scripts/gates/gate_sim.sh artifacts/sim-local
+
+      - name: Upload Sim artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-local
+          path: artifacts/sim-local
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Release Provenance (tag builds only)
+  # ---------------------------------------------------------------------------
+  release-provenance:
+    name: Release Checksum Provenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [gate-a, gate-b, gate-c, gate-e, gate-sim]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig ${{ env.ZIG_VERSION }}
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Install libsecp256k1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsecp256k1-dev
+
+      - name: Build release binaries
+        run: zig build -Dsecp256k1=true -Doptimize=ReleaseSafe && zig build wasm
+
       - name: Generate provenance
         run: |
           mkdir -p zig-out/release
           cp zig-out/bin/rippled-zig zig-out/wasm/*.wasm zig-out/release/
           (cd zig-out/release && sha256sum -b rippled-zig *.wasm > SHA256SUMS)
-          echo '{"version":"1.0","checksums":"SHA256SUMS"}' > zig-out/release/PROVENANCE.json
+          echo "{\"version\":\"1.0\",\"tag\":\"${{ github.ref_name }}\",\"checksums\":\"SHA256SUMS\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > zig-out/release/PROVENANCE.json
+
       - name: Install cosign
-        if: secrets.COSIGN_PRIVATE_KEY != ''
+        if: env.HAS_COSIGN_KEY == 'true'
         uses: sigstore/cosign-installer@v3
-      - name: Sign release with cosign
-        if: secrets.COSIGN_PRIVATE_KEY != ''
         env:
+          HAS_COSIGN_KEY: ${{ secrets.COSIGN_PRIVATE_KEY != '' }}
+
+      - name: Sign release with cosign
+        if: env.HAS_COSIGN_KEY == 'true'
+        env:
+          HAS_COSIGN_KEY: ${{ secrets.COSIGN_PRIVATE_KEY != '' }}
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: cosign sign-blob zig-out/release/SHA256SUMS --output-signature zig-out/release/SHA256SUMS.sig
+
+      - name: Secret-leak scan on release artifacts
+        run: |
+          if grep -rqiE '(PRIVATE|SECRET|PASSWORD|TOKEN|AWS_|COSIGN_)' zig-out/release/; then
+            echo "FATAL: potential secret leak in release artifacts" >&2
+            exit 1
+          fi
+
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ github.ref_name }}
           path: zig-out/release
+          retention-days: 90
 
-  quality:
-    name: Code Quality
+  # ---------------------------------------------------------------------------
+  # Release Readiness Summary
+  # ---------------------------------------------------------------------------
+  release-readiness:
+    name: Release Readiness Summary
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - gate-a
+      - gate-b
+      - gate-c
+      - gate-d
+      - gate-e
+      - gate-sim
+      - wasm
+    if: always()
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Download all gate artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
-    - name: Setup Zig
-      uses: goto-bus-stop/setup-zig@v2
-      with:
-        version: 0.15.1
+      - name: Evaluate gate results
+        run: |
+          echo "===== Gate Results ====="
+          echo "Gate A (build/test/fmt): ${{ needs.gate-a.result }}"
+          echo "Gate B (determinism):    ${{ needs.gate-b.result }}"
+          echo "Gate C (parity):         ${{ needs.gate-c.result }}"
+          echo "Gate D (live testnet):   ${{ needs.gate-d.result }}"
+          echo "Gate E (security):       ${{ needs.gate-e.result }}"
+          echo "Gate Sim (cluster):      ${{ needs.gate-sim.result }}"
+          echo "WASM:                    ${{ needs.wasm.result }}"
+          echo "========================"
 
-    - name: Format Check
-      run: zig fmt --check .
+          failed=false
 
-    - name: Build Check
-      run: zig build --summary all
+          # Required gates -- must pass for any merge to main.
+          for gate in gate-a gate-b gate-c gate-e gate-sim wasm; do
+            result="${{ needs[gate].result }}"
+            if [ "$result" = "" ]; then
+              # GitHub expressions don't resolve dynamic keys; check individually below.
+              true
+            fi
+          done
+
+          if [ "${{ needs.gate-a.result }}" != "success" ]; then
+            echo "REQUIRED gate-a failed"
+            failed=true
+          fi
+          if [ "${{ needs.gate-b.result }}" != "success" ]; then
+            echo "REQUIRED gate-b failed"
+            failed=true
+          fi
+          if [ "${{ needs.gate-c.result }}" != "success" ]; then
+            echo "REQUIRED gate-c failed"
+            failed=true
+          fi
+          if [ "${{ needs.gate-e.result }}" != "success" ]; then
+            echo "REQUIRED gate-e failed"
+            failed=true
+          fi
+          if [ "${{ needs.gate-sim.result }}" != "success" ]; then
+            echo "REQUIRED gate-sim failed"
+            failed=true
+          fi
+          if [ "${{ needs.wasm.result }}" != "success" ]; then
+            echo "REQUIRED wasm failed"
+            failed=true
+          fi
+
+          # Gate D is optional (skipped when secrets unavailable), but if it ran and failed
+          # that is a real signal and should block the release.
+          if [ "${{ needs.gate-d.result }}" = "failure" ]; then
+            echo "OPTIONAL gate-d ran and FAILED -- blocking"
+            failed=true
+          fi
+
+          if [ "$failed" = "true" ]; then
+            echo ""
+            echo "RELEASE READINESS: FAIL"
+            exit 1
+          fi
+
+          echo ""
+          echo "RELEASE READINESS: PASS"
+
+      - name: Build ops digest
+        if: always()
+        run: |
+          ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          {
+            echo "# CI Ops Digest"
+            echo ""
+            echo "- Timestamp (UTC): $ts"
+            echo "- Ref: ${{ github.ref }}"
+            echo "- SHA: ${{ github.sha }}"
+            echo "- Event: ${{ github.event_name }}"
+            echo ""
+            echo "## Gate Results"
+            echo "| Gate | Result |"
+            echo "|------|--------|"
+            echo "| A (build/test/fmt) | ${{ needs.gate-a.result }} |"
+            echo "| B (determinism) | ${{ needs.gate-b.result }} |"
+            echo "| C (parity) | ${{ needs.gate-c.result }} |"
+            echo "| D (live testnet) | ${{ needs.gate-d.result }} |"
+            echo "| E (security) | ${{ needs.gate-e.result }} |"
+            echo "| Sim (cluster) | ${{ needs.gate-sim.result }} |"
+            echo "| WASM | ${{ needs.wasm.result }} |"
+          } > ops-digest.md
+
+      - name: Upload ops digest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ops-digest
+          path: ops-digest.md
+          retention-days: 14

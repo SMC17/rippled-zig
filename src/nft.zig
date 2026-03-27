@@ -21,8 +21,8 @@ pub const NFTManager = struct {
                 self.allocator.free(uri);
             }
         }
-        self.nfts.deinit(self.allocator);
-        self.offers.deinit(self.allocator);
+        self.nfts.deinit();
+        self.offers.deinit();
     }
 
     /// Mint a new NFT
@@ -30,7 +30,7 @@ pub const NFTManager = struct {
         // Generate NFT ID from issuer + sequence + taxon
         // TODO: Use proper NFT ID algorithm
 
-        try self.nfts.append(self.allocator, nft);
+        try self.nfts.append(nft);
     }
 
     /// Burn an NFT
@@ -65,7 +65,7 @@ pub const NFTManager = struct {
 
         if (!nft_exists) return error.NFTNotFound;
 
-        try self.offers.append(self.allocator, offer);
+        try self.offers.append(offer);
     }
 
     /// Cancel an NFT offer - WEEK 3 DAY 19

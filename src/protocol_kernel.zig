@@ -39,13 +39,11 @@ pub const STX_PREFIX = [_]u8{ 0x53, 0x54, 0x58, 0x00 };
 /// Compute signing hash for a transaction: SHA512Half(STX || canonical_serialization)
 /// Caller must ensure canonical fits in stack buffer for wasm compatibility.
 pub fn signingHash(canonical: []const u8) [32]u8 {
-    var buf: [4]u8 = undefined;
-    @memcpy(&buf, &STX_PREFIX);
     var full: [4 + 2048]u8 = undefined; // Max typical tx size
-    @memcpy(full[0..4], &buf);
+    @memcpy(full[0..4], &STX_PREFIX);
     const copy_len = @min(canonical.len, 2048);
     @memcpy(full[4..][0..copy_len], canonical[0..copy_len]);
-    return sha512Half(full[0..4 + copy_len]);
+    return sha512Half(full[0 .. 4 + copy_len]);
 }
 
 export fn wasm_sha512_half(ptr: [*]const u8, len: usize, out: [*]u8) void {

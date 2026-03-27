@@ -1,4 +1,14 @@
-//! XRPL Hooks-compatible WASM template
+// ============================================================================
+// EXPERIMENTAL -- This WASM hook template targets the XRPL Hooks amendment,
+// which is outside the v1 toolkit release promise. Kept for research. For
+// toolkit examples see:
+//   examples/encode_transaction.zig
+//   examples/sign_and_verify.zig
+//   examples/address_encoding.zig
+//   examples/rpc_conformance.zig
+// ============================================================================
+//!
+//! EXPERIMENTAL: XRPL Hooks-compatible WASM template
 //! Build with: zig build wasm
 //!
 //! XRPL Hooks expect:

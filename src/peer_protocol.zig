@@ -390,7 +390,7 @@ pub const PeerDiscovery = struct {
         for (self.known_peers.items) |*peer| {
             self.allocator.free(peer.hostname);
         }
-        self.known_peers.deinit(self.allocator);
+        self.known_peers.deinit();
     }
 
     fn addDefaultPeers(self: *PeerDiscovery) !void {
@@ -407,7 +407,7 @@ pub const PeerDiscovery = struct {
                 .port = peer_info.port,
                 .network_id = 1, // Testnet
             };
-            try self.known_peers.append(self.allocator, peer);
+            try self.known_peers.append(peer);
         }
     }
 

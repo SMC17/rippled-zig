@@ -577,7 +577,7 @@ fn parseHexAlloc(allocator: std.mem.Allocator, hex: []const u8) ![]u8 {
 }
 
 fn isStrictCryptoEnabled() bool {
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GATE_C_STRICT_CRYPTO") catch return false;
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GATE_C_STRICT_CRYPTO") catch return true;
     defer std.heap.page_allocator.free(value);
     return std.mem.eql(u8, value, "true");
 }
@@ -969,11 +969,7 @@ fn assertStrictSecpVectors(allocator: std.mem.Allocator) !void {
         defer allocator.free(prefix);
         if (prefix.len != 4) return error.InvalidSigningPrefixLength;
 
-        const signing_blob = try allocator.alloc(u8, prefix.len + canonical.len);
-        defer allocator.free(signing_blob);
-        @memcpy(signing_blob[0..prefix.len], prefix);
-        @memcpy(signing_blob[prefix.len..], canonical);
-        const signing_hash = @import("crypto.zig").Hash.sha512Half(signing_blob);
+        const signing_hash = try @import("crypto.zig").Hash.prefixedSha512Half(prefix, canonical, allocator);
         const expected_hash = try parseHex32(vec.signing_hash_hex);
         if (!std.mem.eql(u8, &signing_hash, &expected_hash)) return error.StrictSigningHashMismatch;
 
@@ -983,11 +979,7 @@ fn assertStrictSecpVectors(allocator: std.mem.Allocator) !void {
         const tx_body_hash = @import("crypto.zig").Hash.sha512Half(canonical);
         if (std.mem.eql(u8, &tx_body_hash, &signing_hash)) return error.SigningDomainConflatedWithBodyHash;
 
-        var wrong_prefix_blob = try allocator.alloc(u8, 4 + canonical.len);
-        defer allocator.free(wrong_prefix_blob);
-        @memset(wrong_prefix_blob[0..4], 0);
-        @memcpy(wrong_prefix_blob[4..], canonical);
-        const wrong_prefix_hash = @import("crypto.zig").Hash.sha512Half(wrong_prefix_blob);
+        const wrong_prefix_hash = try @import("crypto.zig").Hash.prefixedSha512Half(&[_]u8{ 0, 0, 0, 0 }, canonical, allocator);
         if (std.mem.eql(u8, &wrong_prefix_hash, &signing_hash)) return error.SigningDomainConflatedWithWrongPrefix;
 
         std.debug.print("SIGNING_DOMAIN_CHECK {s} stx_ok=1 tx_hash_diff=1 wrong_prefix_diff=1\n", .{vec.name});

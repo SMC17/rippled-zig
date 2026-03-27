@@ -40,7 +40,7 @@ pub const Metrics = struct {
     }
 
     pub fn deinit(self: *Metrics) void {
-        self.consensus_durations.deinit(self.allocator);
+        self.consensus_durations.deinit();
     }
 
     /// Increment transaction counter
@@ -68,7 +68,7 @@ pub const Metrics = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        try self.consensus_durations.append(self.allocator, duration_ms);
+        try self.consensus_durations.append(duration_ms);
 
         // Keep only last 100
         if (self.consensus_durations.items.len > 100) {

@@ -1,7 +1,7 @@
 # Agent-Native Protocol Lab Backlog
 
 Date: 2026-02-19
-Target: move from educational daemon to agent-native protocol lab with safety constraints.
+Target: research track for moving beyond the toolkit release toward an agent-native protocol lab with safety constraints.
 
 ## Prioritization Rules
 1. Anything tied to gate evidence and safety policy comes first.

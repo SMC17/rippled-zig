@@ -95,7 +95,7 @@ pub const LedgerSync = struct {
     /// Fetch range of ledgers from peer
     fn fetchLedgerRange(self: *LedgerSync, start: types.LedgerSequence, end: types.LedgerSequence) !void {
         if (self.peer_connection == null) return error.NotConnected;
-        const conn = self.peer_connection.?;
+        _ = self.peer_connection.?;
 
         // Fetch each ledger in range
         var seq = start;

@@ -1,6 +1,7 @@
 const std = @import("std");
 const crypto = @import("crypto.zig");
 const canonical = @import("canonical.zig");
+const transaction = @import("transaction.zig");
 const types = @import("types.zig");
 
 fn parseHex32(hex: []const u8) ![32]u8 {
@@ -228,4 +229,130 @@ pub fn main() !void {
 
     const amount = types.Amount.fromXRP(100 * types.XRP);
     if (!amount.isXRP()) return error.InvalidAmountModel;
+
+    var payment = transaction.PaymentTransaction.create(
+        [_]u8{0x01} ** 20,
+        [_]u8{0x02} ** 20,
+        types.Amount.fromXRP(100),
+        10,
+        1,
+        [_]u8{0x03} ** 33,
+    );
+    payment.destination_tag = 7;
+    const payment_bytes = try payment.serialize(allocator);
+    defer allocator.free(payment_bytes);
+    const expected_payment_hex =
+        "12000024000000012e0000000761000000000000006468000000000000000a810101010101010101010101010101010101010101830202020202020202020202020202020202020202";
+    const expected_payment = try parseHexAlloc(allocator, expected_payment_hex);
+    defer allocator.free(expected_payment);
+    if (!std.mem.eql(u8, payment_bytes, expected_payment)) return error.PaymentVectorMismatch;
+    const payment_hash = crypto.Hash.sha512Half(payment_bytes);
+    const expected_payment_hash = try parseHex32("9c16d342a2eb5e05c8016cb12a0dae566fd9e1edcb9ce2ecf91664a45c6da7ab");
+    if (!std.mem.eql(u8, &payment_hash, &expected_payment_hash)) return error.PaymentHashVectorMismatch;
+    recordVector("payment_tx_canonical", payment_hash);
+    const payment_signing_hash = try crypto.Hash.transactionSigningHash(payment_bytes, allocator);
+    const expected_payment_signing_hash = try parseHex32("5326bd2793a3a7f0d80a4b2f1f94b9febd629ae35b1114d211c376266e202fef");
+    if (!std.mem.eql(u8, &payment_signing_hash, &expected_payment_signing_hash)) return error.PaymentSigningHashVectorMismatch;
+    if (std.mem.eql(u8, &payment_signing_hash, &payment_hash)) return error.PaymentSigningHashMatchedBodyHash;
+    recordVector("payment_tx_signing_hash", payment_signing_hash);
+
+    var account_set = transaction.AccountSetTransaction.create(
+        [_]u8{0x03} ** 20,
+        10,
+        2,
+        [_]u8{0x04} ** 33,
+    );
+    account_set.set_flag = 2;
+    account_set.clear_flag = 1;
+    account_set.transfer_rate = 7;
+    const account_set_bytes = try account_set.serialize(allocator);
+    defer allocator.free(account_set_bytes);
+    const expected_account_set_hex =
+        "1200032400000002250000000226000000012b0000000768000000000000000a810303030303030303030303030303030303030303";
+    const expected_account_set = try parseHexAlloc(allocator, expected_account_set_hex);
+    defer allocator.free(expected_account_set);
+    if (!std.mem.eql(u8, account_set_bytes, expected_account_set)) return error.AccountSetVectorMismatch;
+    const account_set_hash = crypto.Hash.sha512Half(account_set_bytes);
+    const expected_account_set_hash = try parseHex32("551c69f0dca814f154abb325a9e5e8bee7dd19b7fb1152e08d8dc580fef365a8");
+    if (!std.mem.eql(u8, &account_set_hash, &expected_account_set_hash)) return error.AccountSetHashVectorMismatch;
+    recordVector("account_set_tx_canonical", account_set_hash);
+    const account_set_signing_hash = try crypto.Hash.transactionSigningHash(account_set_bytes, allocator);
+    const expected_account_set_signing_hash = try parseHex32("b0fe8ab94c8f1388defcf5c122dfd9a2957a38de89d9ed211f5f63d4355cb2db");
+    if (!std.mem.eql(u8, &account_set_signing_hash, &expected_account_set_signing_hash)) return error.AccountSetSigningHashVectorMismatch;
+    if (std.mem.eql(u8, &account_set_signing_hash, &account_set_hash)) return error.AccountSetSigningHashMatchedBodyHash;
+    recordVector("account_set_tx_signing_hash", account_set_signing_hash);
+
+    var offer_create = transaction.OfferCreateTransaction.create(
+        [_]u8{0x04} ** 20,
+        types.Amount.fromXRP(200),
+        types.Amount.fromXRP(300),
+        10,
+        3,
+        [_]u8{0x05} ** 33,
+    );
+    offer_create.expiration = 9;
+    const offer_create_bytes = try offer_create.serialize(allocator);
+    defer allocator.free(offer_create_bytes);
+    const expected_offer_create_hex =
+        "12000724000000032a000000096100000000000000c862000000000000012c68000000000000000a810404040404040404040404040404040404040404";
+    const expected_offer_create = try parseHexAlloc(allocator, expected_offer_create_hex);
+    defer allocator.free(expected_offer_create);
+    if (!std.mem.eql(u8, offer_create_bytes, expected_offer_create)) return error.OfferCreateVectorMismatch;
+    const offer_create_hash = crypto.Hash.sha512Half(offer_create_bytes);
+    const expected_offer_create_hash = try parseHex32("1e9aa27033d455015ac5c59bc0c780e889591904396793dbf5017397ae56431c");
+    if (!std.mem.eql(u8, &offer_create_hash, &expected_offer_create_hash)) return error.OfferCreateHashVectorMismatch;
+    recordVector("offer_create_tx_canonical", offer_create_hash);
+    const offer_create_signing_hash = try crypto.Hash.transactionSigningHash(offer_create_bytes, allocator);
+    const expected_offer_create_signing_hash = try parseHex32("ef7a1d8366cc16249a1048a543d83fd03ab3b4f6bdccdd33f799ffc65c72defe");
+    if (!std.mem.eql(u8, &offer_create_signing_hash, &expected_offer_create_signing_hash)) return error.OfferCreateSigningHashVectorMismatch;
+    if (std.mem.eql(u8, &offer_create_signing_hash, &offer_create_hash)) return error.OfferCreateSigningHashMatchedBodyHash;
+    recordVector("offer_create_tx_signing_hash", offer_create_signing_hash);
+
+    const offer_cancel = transaction.OfferCancelTransaction.create(
+        [_]u8{0x05} ** 20,
+        55,
+        10,
+        4,
+        [_]u8{0x06} ** 33,
+    );
+    const offer_cancel_bytes = try offer_cancel.serialize(allocator);
+    defer allocator.free(offer_cancel_bytes);
+    const expected_offer_cancel_hex =
+        "1200082400000004290000003768000000000000000a810505050505050505050505050505050505050505";
+    const expected_offer_cancel = try parseHexAlloc(allocator, expected_offer_cancel_hex);
+    defer allocator.free(expected_offer_cancel);
+    if (!std.mem.eql(u8, offer_cancel_bytes, expected_offer_cancel)) return error.OfferCancelVectorMismatch;
+    const offer_cancel_hash = crypto.Hash.sha512Half(offer_cancel_bytes);
+    const expected_offer_cancel_hash = try parseHex32("6e16b9cb017fd43658b23b544cb5aa166a85597cb0e3c6f73270630d5254f2bc");
+    if (!std.mem.eql(u8, &offer_cancel_hash, &expected_offer_cancel_hash)) return error.OfferCancelHashVectorMismatch;
+    recordVector("offer_cancel_tx_canonical", offer_cancel_hash);
+    const offer_cancel_signing_hash = try crypto.Hash.transactionSigningHash(offer_cancel_bytes, allocator);
+    const expected_offer_cancel_signing_hash = try parseHex32("1ba4e5a81d9b7ec7c51b32e7a8bd5c0f21e5df1be895eef2e63df9f175bb664d");
+    if (!std.mem.eql(u8, &offer_cancel_signing_hash, &expected_offer_cancel_signing_hash)) return error.OfferCancelSigningHashVectorMismatch;
+    if (std.mem.eql(u8, &offer_cancel_signing_hash, &offer_cancel_hash)) return error.OfferCancelSigningHashMatchedBodyHash;
+    recordVector("offer_cancel_tx_signing_hash", offer_cancel_signing_hash);
+
+    const known_pubkey = [_]u8{
+        0x02, 0xD3, 0xFC, 0x6F, 0x04, 0x11, 0x7E, 0x64, 0x20, 0xCA, 0xEA,
+        0x73, 0x5C, 0x57, 0xCE, 0xEC, 0x93, 0x48, 0x20, 0xBB, 0xCD, 0x10,
+        0x92, 0x00, 0x93, 0x3F, 0x6B, 0xBD, 0xD9, 0x8F, 0x7B, 0xFB, 0xD9,
+    };
+    const derived_account_id = crypto.Hash.accountID(&known_pubkey);
+    const expected_account_id = [_]u8{
+        0xfa, 0xb4, 0xff, 0x1b, 0xec, 0x2e, 0x13, 0x76, 0x13, 0xd2,
+        0x6d, 0xeb, 0xf3, 0xd5, 0x7e, 0xbb, 0x9d, 0x2c, 0xed, 0xae,
+    };
+    if (!std.mem.eql(u8, &derived_account_id, &expected_account_id)) return error.AccountIDVectorMismatch;
+    const account_id_hash = crypto.Hash.sha512Half(&derived_account_id);
+    const expected_account_id_hash = try parseHex32("0b2519387da988c4ab65d432b6e6c7fb5cd413c89e8b7468da4743f81da6de22");
+    if (!std.mem.eql(u8, &account_id_hash, &expected_account_id_hash)) return error.AccountIDHashVectorMismatch;
+    recordVector("account_id_derivation", account_id_hash);
+
+    const derived_address = try @import("base58.zig").Base58.encodeAccountID(allocator, derived_account_id);
+    defer allocator.free(derived_address);
+    if (!std.mem.eql(u8, derived_address, "rPickFLAKK7YkMwKvhSEN1yJAtfnB6qRJc")) return error.AccountAddressVectorMismatch;
+    const address_hash = crypto.Hash.sha512Half(derived_address);
+    const expected_address_hash = try parseHex32("e8768d07225f5a0e4793ad0a5bb2844064333413a09052ab5f0959f7e7712724");
+    if (!std.mem.eql(u8, &address_hash, &expected_address_hash)) return error.AccountAddressHashVectorMismatch;
+    recordVector("account_address_base58", address_hash);
 }

@@ -152,7 +152,7 @@ pub fn signMessage(
         return error.SerializeFailed;
     }
 
-    const result = try allocator.dupe(der_buf[0..der_len]);
+    const result = try allocator.dupe(u8, der_buf[0..der_len]);
     allocator.free(der_buf);
     return result;
 }

@@ -15,7 +15,7 @@ pub const PaymentChannelManager = struct {
     }
 
     pub fn deinit(self: *PaymentChannelManager) void {
-        self.channels.deinit(self.allocator);
+        self.channels.deinit();
     }
 
     /// Create a new payment channel
@@ -24,7 +24,7 @@ pub const PaymentChannelManager = struct {
         if (channel.amount == 0) return error.ZeroAmount;
         if (channel.settle_delay > 86400 * 30) return error.SettleDelayTooLarge; // Max 30 days
 
-        try self.channels.append(self.allocator, channel);
+        try self.channels.append(channel);
     }
 
     /// Fund an existing channel

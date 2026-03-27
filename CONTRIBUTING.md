@@ -21,7 +21,7 @@ Thank you for your interest in contributing to rippled-zig! This project aims to
 
 ### Prerequisites
 
-- Zig 0.15.1 or later
+- Zig 0.14.1 or later
 - Basic understanding of XRPL OR Zig (you'll learn the other!)
 - Git and GitHub account
 

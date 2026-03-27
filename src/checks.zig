@@ -14,7 +14,7 @@ pub const CheckManager = struct {
     }
 
     pub fn deinit(self: *CheckManager) void {
-        self.checks.deinit(self.allocator);
+        self.checks.deinit();
     }
 
     /// Create a new check
@@ -24,7 +24,7 @@ pub const CheckManager = struct {
             return error.CannotCheckSelf;
         }
 
-        try self.checks.append(self.allocator, check);
+        try self.checks.append(check);
     }
 
     /// Cash a check

@@ -21,8 +21,8 @@ pub const ValidatorManager = struct {
         for (self.validators.items) |*validator| {
             self.allocator.free(validator.manifest_data);
         }
-        self.validators.deinit(self.allocator);
-        self.unl.deinit(self.allocator);
+        self.validators.deinit();
+        self.unl.deinit();
     }
 
     /// Load UNL from file or URL
@@ -60,13 +60,13 @@ pub const ValidatorManager = struct {
         };
 
         for (default_validators) |v| {
-            try self.unl.append(self.allocator, v);
+            try self.unl.append(v);
         }
     }
 
     /// Add a validator
     pub fn addValidator(self: *ValidatorManager, validator: Validator) !void {
-        try self.validators.append(self.allocator, validator);
+        try self.validators.append(validator);
     }
 
     /// Get trusted validators (UNL)

@@ -3,7 +3,7 @@ set -euo pipefail
 
 artifact_dir="${1:-artifacts/gate-c}"
 mkdir -p "$artifact_dir"
-strict_crypto="${GATE_C_STRICT_CRYPTO:-false}"
+strict_crypto="${GATE_C_STRICT_CRYPTO:-true}"
 ts_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 sha256_file() {
@@ -18,12 +18,13 @@ sha256_file() {
   fi
 }
 
-# Parity-focused suite through build graph (injects build options).
-if [[ "$strict_crypto" == "true" ]]; then
-  zig build -Dsecp256k1=true gate-c 2>&1 | tee "$artifact_dir/parity.log"
-else
-  zig build gate-c 2>&1 | tee "$artifact_dir/parity.log"
+if [[ "$strict_crypto" != "true" ]]; then
+  echo "Gate C requires GATE_C_STRICT_CRYPTO=true on the v1 release path" | tee "$artifact_dir/failure.txt"
+  exit 1
 fi
+
+# Parity-focused suite through build graph (injects build options).
+zig build -Dsecp256k1=true gate-c 2>&1 | tee "$artifact_dir/parity.log"
 
 positive_crypto_vectors="$(grep -c '^CRYPTO_POSITIVE_VECTOR ' "$artifact_dir/parity.log" || true)"
 negative_crypto_vectors="$(grep -c '^CRYPTO_NEGATIVE_VECTOR ' "$artifact_dir/parity.log" || true)"

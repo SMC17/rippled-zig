@@ -27,7 +27,7 @@ pub const WebSocketServer = struct {
         for (self.clients.items) |*client| {
             client.deinit();
         }
-        self.clients.deinit(self.allocator);
+        self.clients.deinit();
     }
 
     /// Start WebSocket server
@@ -90,7 +90,7 @@ pub const WebSocketServer = struct {
                 parseSubscribePayload(payload, &client);
             } else |_| {}
 
-            try self.clients.append(self.allocator, client);
+            try self.clients.append(client);
         }
     }
 
@@ -157,7 +157,7 @@ pub const WebSocketClient = struct {
 
     pub fn deinit(self: *WebSocketClient) void {
         self.stream.close();
-        self.subscriptions.deinit(self.allocator);
+        self.subscriptions.deinit();
     }
 
     /// Send message to client (RFC 6455 text frame, server->client no masking)
@@ -182,7 +182,7 @@ pub const WebSocketClient = struct {
 
     /// Subscribe to a stream
     pub fn subscribe(self: *WebSocketClient, sub: Subscription) !void {
-        try self.subscriptions.append(self.allocator, sub);
+        try self.subscriptions.append(sub);
     }
 };
 

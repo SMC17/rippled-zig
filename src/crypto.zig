@@ -3,6 +3,9 @@ const types = @import("types.zig");
 
 /// Cryptographic hash functions used in XRP Ledger
 pub const Hash = struct {
+    /// XRPL signing prefix for transaction signing.
+    pub const STX_PREFIX = [_]u8{ 0x53, 0x54, 0x58, 0x00 };
+
     /// SHA-512 Half (first 256 bits of SHA-512)
     /// This is the primary hash function used in XRPL
     pub fn sha512Half(data: []const u8) [32]u8 {
@@ -12,6 +15,20 @@ pub const Hash = struct {
         var result: [32]u8 = undefined;
         @memcpy(&result, full_hash[0..32]);
         return result;
+    }
+
+    /// SHA-512 Half of `prefix || payload`.
+    pub fn prefixedSha512Half(prefix: []const u8, payload: []const u8, allocator: std.mem.Allocator) ![32]u8 {
+        const buf = try allocator.alloc(u8, prefix.len + payload.len);
+        defer allocator.free(buf);
+        @memcpy(buf[0..prefix.len], prefix);
+        @memcpy(buf[prefix.len..], payload);
+        return sha512Half(buf);
+    }
+
+    /// XRPL transaction signing hash: SHA512Half(STX || canonical_tx_without_signature_fields)
+    pub fn transactionSigningHash(canonical: []const u8, allocator: std.mem.Allocator) ![32]u8 {
+        return prefixedSha512Half(&STX_PREFIX, canonical, allocator);
     }
 
     /// RIPEMD-160 hash (REAL implementation)
@@ -101,23 +118,29 @@ pub const KeyPair = struct {
                 var seckey: [32]u8 = undefined;
                 @memcpy(&seckey, self.private_key);
 
-                // XRPL secp256k1: sign SHA512Half(0x53 0x54 0x58 0x00 || data)
                 const stx: [4]u8 = .{ 0x53, 0x54, 0x58, 0x00 };
                 var msg_hash: [32]u8 = undefined;
                 if (data.len == 32) {
                     @memcpy(&msg_hash, data);
                 } else {
-                    var buf = try allocator.alloc(u8, 4 + data.len);
-                    defer allocator.free(buf);
-                    @memcpy(buf[0..4], &stx);
-                    @memcpy(buf[4..], data);
-                    msg_hash = Hash.sha512Half(buf);
+                    msg_hash = try Hash.prefixedSha512Half(&stx, data, allocator);
                 }
 
                 const secp = @import("secp256k1_binding.zig");
                 return secp.signMessage(seckey, msg_hash, allocator);
             },
         }
+    }
+
+    /// Sign canonical XRPL transaction bytes using the transaction signing domain.
+    pub fn signXrplTransaction(self: KeyPair, canonical: []const u8, allocator: std.mem.Allocator) ![]u8 {
+        return switch (self.algorithm) {
+            .secp256k1 => {
+                const signing_hash = try Hash.transactionSigningHash(canonical, allocator);
+                return self.sign(&signing_hash, allocator);
+            },
+            .ed25519 => self.sign(canonical, allocator),
+        };
     }
 
     /// Verify a signature
@@ -137,7 +160,7 @@ pub const KeyPair = struct {
                 const sig = std.crypto.sign.Ed25519.Signature.fromBytes(sig_bytes);
                 const pub_key_struct = try std.crypto.sign.Ed25519.PublicKey.fromBytes(pub_key);
 
-                // Verify signature using Signature.verify method (Zig 0.15.1 API)
+                // Verify signature using Signature.verify method (Zig 0.14.1 API)
                 sig.verify(data, pub_key_struct) catch {
                     return false;
                 };
@@ -153,8 +176,8 @@ pub const KeyPair = struct {
                     return false;
                 }
 
-                // Verify signature
-                return secp.verifySignature(public_key, data, signature) catch false;
+                // Verify signature using the mandatory secp256k1 path.
+                return secp.verifySignature(public_key, data, signature);
             },
         }
     }
@@ -191,4 +214,92 @@ test "ed25519 sign and verify" {
 
     const valid = try KeyPair.verify(key_pair.public_key, message, signature, .ed25519);
     try std.testing.expect(valid);
+}
+
+test "xrpl signing hash uses STX prefix" {
+    const allocator = std.testing.allocator;
+    const canonical = [_]u8{ 0x12, 0x00, 0x00, 0x24, 0x00, 0x00, 0x00, 0x01 };
+
+    const signing_hash = try Hash.transactionSigningHash(&canonical, allocator);
+    const body_hash = Hash.sha512Half(&canonical);
+
+    try std.testing.expect(!std.mem.eql(u8, &signing_hash, &body_hash));
+}
+
+test "account ID derivation matches known XRPL vector" {
+    const pub_key_hex = "02D3FC6F04117E6420CAEA735C57CEEC934820BBCD109200933F6BBDD98F7BFBD9";
+    var pub_key: [33]u8 = undefined;
+    _ = try std.fmt.hexToBytes(&pub_key, pub_key_hex);
+
+    const account_id = Hash.accountID(&pub_key);
+    const expected = [_]u8{
+        0xfa, 0xb4, 0xff, 0x1b, 0xec, 0x2e, 0x13, 0x76, 0x13, 0xd2,
+        0x6d, 0xeb, 0xf3, 0xd5, 0x7e, 0xbb, 0x9d, 0x2c, 0xed, 0xae,
+    };
+
+    try std.testing.expectEqualSlices(u8, &expected, &account_id);
+}
+
+test "secp256k1 strict verification vector suite" {
+    const vectors = [_]struct {
+        hash_hex: []const u8,
+        pubkey_hex: []const u8,
+        signature_hex: []const u8,
+    }{
+        .{
+            .hash_hex = "4a5cf8d6ee452e06633ebf65fb069a862885efce1a91718dfb26ffb49e0505c9",
+            .pubkey_hex = "03f38e8c09c2b4446a5d72d8050e8a16f6398d4ed9debace3defeb59e4aa670d9e",
+            .signature_hex = "30450221009381495b11ae66358704b255fc8fb4c32a326179aecde13a33a36916201b8faa02203da63c00a1d4ada3e0d1f178362572efd2640146a70e73d683ae8a5f876c72d8",
+        },
+        .{
+            .hash_hex = "52fc53d5735a43a7eabeb56251ac2a6fa17f49e3fa160a23864f208e695d1249",
+            .pubkey_hex = "0239fe749408e0e82a084d8764dbd00a0c5954b9d15cb70888ce1c9cd547c5ac17",
+            .signature_hex = "3045022100be1288f1db489fbf09845db49947c18307771a1311852f762b8c48d8e088544c02207fd9b84ddae58afb018bf28bc95386097b9f214a540fb1dd3682dec2d736ff86",
+        },
+        .{
+            .hash_hex = "6e842d6086c9edcd0da27eef13667cb1c838dd9d9c77b8364a5d36b5a069f2b4",
+            .pubkey_hex = "02ecc3cc13c0ddd58ccd1c75e06d0c1ef1b8f153a3123c96db87a5ec752d4103ee",
+            .signature_hex = "304402205c4933a114fbd4c9f2427182a529cd8f2f9584c293fa86b5218fcb6d9211b68f02203a4f9fc0576548a5819344192c994a7b69e2224daa457520b287dd0134828532",
+        },
+    };
+
+    var first_hash: [32]u8 = undefined;
+    var first_sig: [80]u8 = undefined;
+    var first_sig_len: usize = 0;
+    var first_pub: [33]u8 = undefined;
+    var second_pub: [33]u8 = undefined;
+
+    for (vectors, 0..) |vec, idx| {
+        var hash: [32]u8 = undefined;
+        _ = try std.fmt.hexToBytes(&hash, vec.hash_hex);
+
+        var pubkey: [33]u8 = undefined;
+        _ = try std.fmt.hexToBytes(&pubkey, vec.pubkey_hex);
+
+        var signature: [80]u8 = undefined;
+        const sig_len = vec.signature_hex.len / 2;
+        _ = try std.fmt.hexToBytes(signature[0..sig_len], vec.signature_hex);
+
+        const ok = try KeyPair.verify(&pubkey, &hash, signature[0..sig_len], .secp256k1);
+        try std.testing.expect(ok);
+
+        if (idx == 0) {
+            first_hash = hash;
+            first_pub = pubkey;
+            first_sig_len = sig_len;
+            @memcpy(first_sig[0..sig_len], signature[0..sig_len]);
+        } else if (idx == 1) {
+            second_pub = pubkey;
+        }
+    }
+
+    first_hash[0] ^= 0x01;
+    try std.testing.expect(!(try KeyPair.verify(&first_pub, &first_hash, first_sig[0..first_sig_len], .secp256k1)));
+    first_hash[0] ^= 0x01;
+
+    first_sig[first_sig_len - 1] ^= 0x01;
+    try std.testing.expect(!(try KeyPair.verify(&first_pub, &first_hash, first_sig[0..first_sig_len], .secp256k1)));
+    first_sig[first_sig_len - 1] ^= 0x01;
+
+    try std.testing.expect(!(try KeyPair.verify(&second_pub, &first_hash, first_sig[0..first_sig_len], .secp256k1)));
 }

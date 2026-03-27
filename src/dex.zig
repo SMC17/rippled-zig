@@ -15,7 +15,7 @@ pub const OrderBook = struct {
     }
 
     pub fn deinit(self: *OrderBook) void {
-        self.offers.deinit(self.allocator);
+        self.offers.deinit();
     }
 
     /// Create a new offer
@@ -26,7 +26,7 @@ pub const OrderBook = struct {
         }
 
         // Add to order book
-        try self.offers.append(self.allocator, offer);
+        try self.offers.append(offer);
 
         // Try to cross offers
         try self.crossOffers();

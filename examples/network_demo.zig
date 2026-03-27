@@ -1,13 +1,23 @@
+// ============================================================================
+// EXPERIMENTAL -- This demo exercises the P2P networking module, which is
+// outside the v1 toolkit release promise. Kept for research and integration
+// testing. For toolkit examples see:
+//   examples/encode_transaction.zig
+//   examples/sign_and_verify.zig
+//   examples/address_encoding.zig
+//   examples/rpc_conformance.zig
+// ============================================================================
 const std = @import("std");
 const network = @import("network.zig");
 
-/// Demonstration of the working P2P networking
+/// EXPERIMENTAL: Demo of the in-repo P2P networking module
+/// (Depends on node-simulation modules outside the v1 toolkit surface.)
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    std.debug.print("=== P2P Network Demo ===\n\n", .{});
+    std.debug.print("=== Experimental P2P Network Demo ===\n\n", .{});
 
     // Create network instance
     var net = try network.Network.init(allocator, 51235);
@@ -54,5 +64,6 @@ pub fn main() !void {
     std.debug.print("  net.connectPeer(\"127.0.0.1\", 51235) - connect to peer\n", .{});
     std.debug.print("  net.broadcast(message) - broadcast to all peers\n\n", .{});
 
+    std.debug.print("This demo is outside the current v1 toolkit release promise.\n", .{});
     std.debug.print("Demo complete!\n", .{});
 }

@@ -2,7 +2,9 @@
 
 > Note: For current module maturity, ownership, and risk, see `docs/status/ARCHITECTURE_SOT.md`.
 
-**Purpose**: Technical architecture overview for contributors
+**Purpose**: Technical architecture overview for contributors.
+
+**Release note**: The active shipping target is the `v1 XRPL Toolkit` milestone, which is narrower than the full set of modules in this repository. Experimental runtime/peer modules remain documented here, but they are not part of the current release claim unless explicitly promoted by gate evidence.
 
 ---
 

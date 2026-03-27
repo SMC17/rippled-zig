@@ -1,17 +1,25 @@
 # Roadmap To Parity
 
-Status: Active parity program plan as of February 24, 2026.
+Status: Active parity program plan as of March 15, 2026.
 
 This document defines how parity claims can be earned. It replaces percentage-based claims with evidence-backed gates.
 
 ## Parity Definition
 Parity means reproducible behavioral alignment for declared scope, not feature-count similarity.
 
-Declared scope today:
+Declared v1 scope today:
 - Live JSON-RPC subset and contracts
-- Deterministic serialization/hash vectors
+- Deterministic serialization/hash vectors for the supported transaction set
+- Signing-hash generation and signature verification
 - Negative-case error contract stability
 - Testnet conformance checks for selected endpoints
+
+Out of v1 scope:
+- validator operation
+- full peer compatibility
+- ledger sync parity
+- consensus parity
+- storage durability claims
 
 ## Parity Claim Levels
 
@@ -31,49 +39,57 @@ No claim above current evidence should appear in project docs.
 - P2: operationally available; Gate D method coverage has expanded (`ping`, `ledger_current`) but latest live artifact evidence depends on testnet endpoint secrets.
 - P3/P4: not yet achieved.
 
-## Workstreams To Reach Decision-Grade Parity
+## Workstreams To Reach V1 Decision-Grade Parity
 
-### Workstream 1: RPC Contract Expansion
-- Expand strict schemas for each newly live method.
-- Add deterministic negative contracts before broadening method behavior.
-- Keep fixture manifest pinned and reviewed.
+Canonical execution target:
+- Epic: `#45`
+- Milestone: `v1 XRPL Toolkit`
+- Child issues: `#46`-`#62`
 
-Exit evidence:
-- Updated `test_data/rpc_live_methods_schema.json` and `test_data/rpc_live_negative_schema.json`
-- Passing `scripts/gates/gate_c.sh`
-
-### Workstream 2: Submit Path Fidelity
-- Extend minimal submit decoding/validation/apply coverage by transaction shape.
-- Add exact deterministic error mapping for each fail class.
+### Workstream 1: Scope Freeze and Packaging
+- Align docs, examples, and build defaults with toolkit-first scope.
+- Keep experimental node surfaces outside the release claim.
+- Eliminate toolchain drift on the default developer path.
 
 Exit evidence:
-- unit tests in `src/rpc.zig` / `src/rpc_methods.zig`
-- Gate C fixture and schema checks for new cases
+- `#46`, `#47`, `#61` closed
+- Gate A passes on the pinned toolchain
 
-### Workstream 3: Live Testnet Conformance
-- Keep Gate D strict on endpoint health, status/error contracts, and latency thresholds.
-- Add live checks for newly promoted methods.
-- Maintain operator runbook for secrets/cadence/troubleshooting (`docs/GATE_D_OPERATOR_RUNBOOK.md`).
-
-Exit evidence:
-- `scripts/gates/gate_d.sh` pass artifacts
-- `trend-summary-7d.json` within thresholds
-
-### Workstream 4: Policy and Safety
-- Preserve hard boundary between research and production profiles.
-- Block unsafe profile transitions and runtime config drift in production.
+### Workstream 2: Canonical Codec and Fixture Corpus
+- Finish canonical transaction encoding for the v1-supported set.
+- Pin expected bytes and digests in the fixture corpus.
+- Keep Gate B tied to the real release surface.
 
 Exit evidence:
-- policy tests in `src/rpc.zig` and `src/rpc_methods.zig`
-- deterministic policy contract checks in Gate C
+- `#48`, `#49`, `#50` closed
+- Passing `scripts/gates/gate_b.sh`
 
-### Workstream 5: Security and Supply Chain
-- Maintain Gate E checks and trend thresholds.
-- Require signed/reviewed release chain for production-oriented claims.
+### Workstream 3: Signing and Verification Correctness
+- Lock signing-domain rules for supported transactions.
+- Make libsecp256k1 the mandatory strict verification path for release work.
+- Expand positive and negative signature vector coverage.
 
 Exit evidence:
-- `scripts/gates/gate_e.sh` pass artifacts
-- policy and provenance documentation
+- `#51`, `#52`, `#53`, `#54` closed
+- Passing `scripts/gates/gate_c.sh` with strict crypto enabled
+
+### Workstream 4: Live RPC Conformance
+- Freeze the supported live RPC subset.
+- Keep `submit` narrow and deterministic on the release path.
+- Make Gate D artifacts decision-grade for release evidence.
+
+Exit evidence:
+- `#55`, `#56`, `#57` closed
+- Passing `scripts/gates/gate_d.sh`
+
+### Workstream 5: Public Product Surface and Release Discipline
+- Expose a stable Zig library surface.
+- Ship toolkit CLI commands and supported examples.
+- Complete signed/reviewed release artifacts and the canonical v1 claim.
+
+Exit evidence:
+- `#58`, `#59`, `#60`, `#62` closed
+- Gate A and Gate E pass on the release candidate
 
 ## Parity Claim Governance
 1. Every parity statement must reference a specific gate artifact path.
@@ -81,7 +97,7 @@ Exit evidence:
 3. Historical launch or parity docs are non-authoritative without current evidence.
 
 ## Next Milestones
-1. Close live Gate D evidence gap for `ping` / `ledger_current` with real testnet artifacts (`#19`).
-2. Expand research-sandbox invariants and simulation evidence (`#28`).
-3. Achieve sustained 7-day trend thresholds with no high-severity open risks.
-4. Produce review packet for security and release decision sign-off.
+1. Close `#46`, `#47`, and `#61` by `2026-03-31`.
+2. Close `#48`-`#54` by `2026-05-15`.
+3. Close `#55`-`#57` by `2026-06-15`.
+4. Close `#58`-`#60` by `2026-07-10`, then close `#62` by `2026-07-31`.

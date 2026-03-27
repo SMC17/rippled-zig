@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: Active roadmap for `main` as of February 24, 2026.
+Status: Active roadmap for `main` as of March 15, 2026.
 
 Canonical companion docs:
 - `PROJECT_STATUS.md` (release decision + evidence register)
@@ -9,50 +9,67 @@ Canonical companion docs:
 
 ## Planning Rules
 1. Gate-backed evidence before maturity claims.
-2. Safety policy before autonomy expansion.
+2. Narrow product scope before broadening implementation.
 3. Deterministic contracts before broad API surface.
 4. Research and production behaviors are explicitly separated.
+
+## Active Release Target
+- Milestone: `v1 XRPL Toolkit`
+- Epic: `#45` https://github.com/SMC17/rippled-zig/issues/45
+- Child issues: `#46`-`#62`
+- Target date: `2026-07-31`
+- Product target:
+  - Canonical XRPL transaction encoding for a declared supported set
+  - Signing-hash generation and signature verification with strict evidence
+  - Selected live RPC conformance with pinned schemas and artifacts
+  - Stable Zig library and CLI surface
+- Explicitly not part of v1:
+  - validator readiness
+  - full P2P overlay compatibility
+  - ledger sync parity
+  - consensus parity
+  - storage durability claims
 
 ## Milestones
 
 | Milestone | Objective | Status | Exit Evidence |
 |---|---|---|---|
-| M0 | Stable quality-gate baseline (A/B/C/E + sim) | In place | `scripts/gates/gate_a.sh`, `scripts/gates/gate_b.sh`, `scripts/gates/gate_c.sh`, `scripts/gates/gate_e.sh`, `scripts/gates/gate_sim.sh` green in CI |
-| M1 | Live RPC hardening + strict contracts (`account_info`, `submit`, `ping`, `ledger_current`) | In progress (local/Gate C complete; Gate D evidence pending for latest `ping`/`ledger_current`) | `test_data/rpc_live_methods_schema.json`, `test_data/rpc_live_negative_schema.json`, `src/parity_check.zig`, `scripts/gates/gate_c.sh`, `scripts/gates/gate_d.sh` |
-| M2 | Control-plane policy boundary (`research` vs `production`) | In progress | profile policy tests in `src/rpc.zig` and `src/rpc_methods.zig`; method boundary checks in `gate_c` |
-| M3 | Testnet conformance trend discipline (Gate D) | In progress (runbook + method coverage expanded; live rerun pending envs) | `scripts/gates/gate_d.sh`, `scripts/gates/gate_d_trend_merge.sh`, `docs/GATE_D_OPERATOR_RUNBOOK.md`, `artifacts/*/testnet-conformance.json` |
-| M4 | Submit-path capability expansion with deterministic failure contracts | In progress | submit apply tests + Gate C fixtures for positive and negative cases |
-| M5 | Agent-native protocol lab baseline | In progress | closed-loop runbook + policy docs + deterministic scenario library + experiment harnesses |
-| M6 | WASM experimentation path for hooks/tooling/simulation | In progress | wasm build target, hooks example, and reproducible experiment docs |
+| M0 | Scope freeze + toolchain parity (`#46`, `#47`, `#61`) | In progress | docs updated, default build narrowed, Zig `0.14.1` enforced locally and in CI |
+| M1 | Canonical codec + fixture corpus (`#48`, `#49`, `#50`) | Planned | Gate B deterministic vectors and fixture manifest updated for the v1 transaction set |
+| M2 | Signing/crypto correctness (`#51`, `#52`, `#53`, `#54`) | Planned | strict signing-hash + verification evidence in Gate C |
+| M3 | Live subset and release evidence (`#55`, `#56`, `#57`) | Planned | Gate C/Gate D evidence for the declared RPC subset |
+| M4 | Public library/CLI/examples (`#58`, `#59`, `#60`) | Planned | stable API surface, toolkit CLI, supported examples |
+| M5 | Release checklist and signed artifacts (`#62`) | Planned | release checklist, signed artifact flow, canonical v1 claim in `PROJECT_STATUS.md` |
 
-## Current Quarter Execution Track
+## Current Execution Track
 
-### Track A: Contract and Policy Integrity
-- Keep live RPC method contracts deterministic and fixture-driven.
-- Expand negative-case tiers before adding broad method coverage.
-- Maintain production-profile hard boundary (allowlist/denylist).
+### Track A: Scope and Packaging
+- Make the repo and release language toolkit-first.
+- Keep experimental node surfaces outside the default release promise.
+- Align onboarding, examples, and build entrypoints with the v1 target.
 
-### Track B: Submit Path Deepening
-- Extend minimal submit decode/validate/apply incrementally.
-- Add one transaction shape at a time with deterministic errors.
-- Gate each increment with schema + parity checks.
+### Track B: Canonical Codec and Crypto
+- Finish canonical transaction serialization for the supported set.
+- Lock signing-domain correctness and verification vectors.
+- Require strict crypto evidence on the release path.
 
-### Track C: Live Conformance
-- Run Gate D regularly with testnet endpoints.
-- Track latency and success-rate trends over rolling windows.
-- Fail fast on contract drift between local and live behaviors.
-- Operator runbook: `docs/GATE_D_OPERATOR_RUNBOOK.md` (secrets, cadence, troubleshooting).
+### Track C: Live RPC Conformance
+- Freeze the declared live RPC subset.
+- Keep submit behavior narrow and deterministic.
+- Make Gate D artifacts release-grade for the supported subset.
 
 ## Near-Term Deliverables
-1. Run Gate D with real testnet endpoints to close `#19` live evidence for `ping` and `ledger_current`.
-2. Add initial protocol invariants and gate-backed checks for research sandbox (`#28`).
-3. Deepen submit-path fidelity with additional transaction shapes and deterministic failure tiers.
-4. Continue live RPC contract expansion and Gate D method promotion cadence.
+1. Close `#46`, `#47`, and `#61` to freeze v1 scope and eliminate local toolchain drift.
+2. Land `#48`-`#50` so Gate B represents the real v1 codec surface.
+3. Land `#51`-`#54` so Gate C can defend the v1 signing and verification claim.
+4. Narrow and validate the live RPC subset via `#55`-`#57`.
 
 ## Not In Scope For Current Release Decision
 - Mainnet validator operation.
-- Autonomous self-modifying production releases.
-- Unreviewed agent writes to production profile.
+- Full peer protocol parity.
+- Full ledger sync parity.
+- Consensus parity claims.
+- Storage durability claims.
 
 ## Release Posture
 - Current release decision remains `NO-GO` until `PROJECT_STATUS.md` criteria are met.

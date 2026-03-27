@@ -24,6 +24,10 @@ pub const AmendmentManager = struct {
             self.allocator.free(entry.key_ptr.*);
         }
         self.amendments.deinit();
+        var eit = self.enabled.iterator();
+        while (eit.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+        }
         self.enabled.deinit();
     }
 
@@ -47,14 +51,14 @@ pub const AmendmentManager = struct {
     /// Get all enabled amendments
     pub fn getEnabled(self: *const AmendmentManager, allocator: std.mem.Allocator) ![][]const u8 {
         var list = try std.ArrayList([]const u8).initCapacity(allocator, self.enabled.count());
-        errdefer list.deinit(allocator);
+        errdefer list.deinit();
 
         var it = self.enabled.keyIterator();
         while (it.next()) |key| {
-            try list.append(allocator, key.*);
+            try list.append(key.*);
         }
 
-        return list.toOwnedSlice(allocator);
+        return list.toOwnedSlice();
     }
 };
 

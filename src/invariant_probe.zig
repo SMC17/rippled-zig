@@ -60,7 +60,7 @@ fn writeFailureJson(path: []const u8, scenario: []const u8, failure: invariants.
             , .{
                 f.account_prefix[0], f.account_prefix[1], f.account_prefix[2], f.account_prefix[3],
                 f.account_prefix[4], f.account_prefix[5], f.account_prefix[6], f.account_prefix[7],
-                f.before_seq, f.after_seq,
+                f.before_seq,        f.after_seq,
             });
         },
         .ledger_sequence_monotonicity => |f| {
@@ -134,11 +134,26 @@ fn writeLedgerHashFailureJson(
         \\}}
     , .{
         scenario,
-        expected_hash[0], expected_hash[1], expected_hash[2], expected_hash[3],
-        expected_hash[4], expected_hash[5], expected_hash[6], expected_hash[7],
-        calculated_hash[0], calculated_hash[1], calculated_hash[2], calculated_hash[3],
-        calculated_hash[4], calculated_hash[5], calculated_hash[6], calculated_hash[7],
-        ctx.nodes, ctx.rounds, ctx.base_ledger_seq, ctx.latest_ledger_seq,
+        expected_hash[0],
+        expected_hash[1],
+        expected_hash[2],
+        expected_hash[3],
+        expected_hash[4],
+        expected_hash[5],
+        expected_hash[6],
+        expected_hash[7],
+        calculated_hash[0],
+        calculated_hash[1],
+        calculated_hash[2],
+        calculated_hash[3],
+        calculated_hash[4],
+        calculated_hash[5],
+        calculated_hash[6],
+        calculated_hash[7],
+        ctx.nodes,
+        ctx.rounds,
+        ctx.base_ledger_seq,
+        ctx.latest_ledger_seq,
     });
     try w.flush();
 }
@@ -180,9 +195,18 @@ fn writePassJson(path: []const u8, scenario: []const u8, ctx: anytype) !void {
         scenario,
         ctx.ledger_total_coins,
         types.MAX_XRP,
-        ctx.ledger_hash[0], ctx.ledger_hash[1], ctx.ledger_hash[2], ctx.ledger_hash[3],
-        ctx.ledger_hash[4], ctx.ledger_hash[5], ctx.ledger_hash[6], ctx.ledger_hash[7],
-        ctx.nodes, ctx.rounds, ctx.base_ledger_seq, ctx.latest_ledger_seq,
+        ctx.ledger_hash[0],
+        ctx.ledger_hash[1],
+        ctx.ledger_hash[2],
+        ctx.ledger_hash[3],
+        ctx.ledger_hash[4],
+        ctx.ledger_hash[5],
+        ctx.ledger_hash[6],
+        ctx.ledger_hash[7],
+        ctx.nodes,
+        ctx.rounds,
+        ctx.base_ledger_seq,
+        ctx.latest_ledger_seq,
     });
     try w.flush();
 }

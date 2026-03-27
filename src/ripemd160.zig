@@ -72,14 +72,16 @@ const Context = struct {
 
         // Output state as bytes (little-endian)
         for (self.state, 0..) |word, i| {
-            std.mem.writeInt(u32, out[i * 4 .. i * 4 + 4], word, .little);
+            const out_word: *[4]u8 = @ptrCast(out[i * 4 .. i * 4 + 4].ptr);
+            std.mem.writeInt(u32, out_word, word, .little);
         }
     }
 
     fn processBlock(self: *Context, block: *const [64]u8) void {
         var X: [16]u32 = undefined;
         for (0..16) |i| {
-            X[i] = std.mem.readInt(u32, block[i * 4 .. i * 4 + 4], .little);
+            const block_word: *const [4]u8 = @ptrCast(block[i * 4 .. i * 4 + 4].ptr);
+            X[i] = std.mem.readInt(u32, block_word, .little);
         }
 
         var AL = self.state[0];
@@ -149,7 +151,7 @@ const Context = struct {
     }
 
     inline fn rotl(x: u32, n: u5) u32 {
-        return (x << n) | (x >> (32 - n));
+        return std.math.rotl(u32, x, n);
     }
 
     const R_LEFT = [80]u8{

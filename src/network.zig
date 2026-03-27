@@ -21,7 +21,7 @@ pub const Network = struct {
 
     pub fn deinit(self: *Network) void {
         self.stop();
-        self.peers.deinit(self.allocator);
+        self.peers.deinit();
     }
 
     /// Start listening for peer connections
@@ -88,7 +88,7 @@ pub const Network = struct {
             .allocator = self.allocator,
         };
 
-        try self.peers.append(self.allocator, peer);
+        try self.peers.append(peer);
         std.debug.print("Connected to peer {}:{d} (ledger: {d})\n", .{ std.fmt.fmtSliceHexLower(address[0..@min(8, address.len)]), port, handshake_result.peer_ledger_seq });
 
         return &self.peers.items[self.peers.items.len - 1];

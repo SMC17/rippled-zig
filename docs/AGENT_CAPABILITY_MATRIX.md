@@ -39,7 +39,7 @@ To transition to `production`, all must hold:
 
 ## Closed-Loop Test Automation
 
-1. Start node with `profile=research`.
+1. Start the local runtime with `profile=research`.
 2. Call `agent_status` to verify `mode == "research"`.
 3. Run Gate A: `scripts/gates/gate_a.sh artifacts/gate-a-local`.
 4. Run Gate C: `scripts/gates/gate_c.sh artifacts/gate-c-local`.

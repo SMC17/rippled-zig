@@ -1,27 +1,27 @@
 # Agent Runbook v2
 
-**Purpose**: Closed-loop automation for AI agents interacting with rippled-zig. Use for training, evaluation, and autonomous experimentation.
+**Purpose**: Closed-loop automation for AI agents interacting with rippled-zig. Use for training, evaluation, conformance work, and autonomous experimentation on non-release surfaces.
 
 ## Prerequisites
 
-- Zig 0.15.1+
-- Node started with `profile=research` for write operations
+- Zig 0.14.1+
+- Toolkit/runtime started with `profile=research` for write operations
 
 ## Quick Reference
 
 | Step | Command | Purpose |
 |------|---------|---------|
-| Build | `./zig build` | Compile node |
-| Test | `./zig build test` | Unit/integration tests |
-| WASM | `./zig build wasm` | Protocol kernel + Hooks WASM |
+| Build | `zig build` | Compile toolkit/runtime |
+| Test | `zig build test` | Unit/integration tests |
+| WASM | `zig build wasm` | Protocol kernel + Hooks WASM |
 | Gate A | `scripts/gates/gate_a.sh artifacts/gate-a-local` | Build + tests |
 | Gate C | `scripts/gates/gate_c.sh artifacts/gate-c-local` | Parity + contracts |
 | Sim | `scripts/sim/run_local_cluster.sh artifacts/sim-local` | Deterministic cluster |
-| Run node | `scripts/run.sh` | Start daemon |
+| Run local entrypoint | `scripts/run.sh` | Start the current local runtime entrypoint |
 
 ## Closed-Loop Flow (Agent v2)
 
-1. **Read telemetry**: `agent_status` → `agent_control`, `node_state`
+1. **Read telemetry**: `agent_status` → `agent_control`, `runtime_state`
 2. **Read config**: `agent_config_get` → current profile and parameters
 3. **Adjust (research only)**: `agent_config_set` with allowlisted keys
 4. **Run gates**: Execute Gate A, C, Sim; parse `artifacts/` for results

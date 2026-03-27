@@ -1,29 +1,55 @@
 const std = @import("std");
 const types = @import("types.zig");
 
-/// Canonical Field Ordering for XRPL Serialization
-/// BLOCKER #2 FIX
+/// XRPL Canonical Field Ordering and Serialization
 ///
-/// XRPL requires fields in specific order for hashing:
-/// 1. Group by type code
-/// 2. Within group, sort by field code
-/// 3. Specific type order: UInt16 → UInt32 → UInt64 → Amount → VL → Account → Hash256
+/// XRPL binary serialization rules:
+/// 1. Fields are identified by (type_code, field_code)
+/// 2. Serialization order: sort by type_code first, then field_code
+/// 3. Field header encoding:
+///    - If type < 16 and field < 16: single byte = (type << 4) | field
+///    - If type < 16 and field >= 16: two bytes = (type << 4) | 0, field
+///    - If type >= 16 and field < 16: two bytes = field, type
+///    - If type >= 16 and field >= 16: three bytes = 0, type, field
+///
+/// XRPL Type Codes:
+///   1 = UInt16
+///   2 = UInt32
+///   3 = UInt64 (not used for Amount)
+///   4 = Hash128
+///   5 = Hash256
+///   6 = Amount
+///   7 = Blob (variable-length)
+///   8 = AccountID
+///  14 = STObject
+///  15 = STArray
+pub const TypeCode = struct {
+    pub const UInt16: u8 = 1;
+    pub const UInt32: u8 = 2;
+    pub const UInt64: u8 = 3;
+    pub const Hash128: u8 = 4;
+    pub const Hash256: u8 = 5;
+    pub const Amount: u8 = 6;
+    pub const Blob: u8 = 7;
+    pub const AccountID: u8 = 8;
+    pub const STObject: u8 = 14;
+    pub const STArray: u8 = 15;
+};
+
 pub const FieldOrder = struct {
     type_code: u8,
     field_code: u8,
     data: []const u8,
 
     pub fn lessThan(_: void, a: FieldOrder, b: FieldOrder) bool {
-        // First compare by type code
         if (a.type_code != b.type_code) {
             return a.type_code < b.type_code;
         }
-        // Then by field code
         return a.field_code < b.field_code;
     }
 };
 
-/// Canonical serializer that sorts fields properly
+/// Canonical serializer that sorts fields in XRPL-correct order
 pub const CanonicalSerializer = struct {
     allocator: std.mem.Allocator,
     fields: std.ArrayList(FieldOrder),
@@ -39,136 +65,227 @@ pub const CanonicalSerializer = struct {
         for (self.fields.items) |field| {
             self.allocator.free(field.data);
         }
-        self.fields.deinit(self.allocator);
+        self.fields.deinit();
     }
 
-    /// Add a field (will be sorted later)
+    /// Add a raw field with type and field codes
     pub fn addField(self: *CanonicalSerializer, type_code: u8, field_code: u8, data: []const u8) !void {
         const owned_data = try self.allocator.dupe(u8, data);
-        try self.fields.append(self.allocator, FieldOrder{
+        try self.fields.append(FieldOrder{
             .type_code = type_code,
             .field_code = field_code,
             .data = owned_data,
         });
     }
 
-    /// Add UInt8 field
-    pub fn addUInt8(self: *CanonicalSerializer, field_code: u8, value: u8) !void {
-        var data: [1]u8 = .{value};
-        try self.addField(0x10, field_code, &data);
-    }
+    // ── Typed field helpers ──
 
-    /// Add UInt16 field
+    /// Add UInt16 field (type code 1)
     pub fn addUInt16(self: *CanonicalSerializer, field_code: u8, value: u16) !void {
         var data: [2]u8 = undefined;
         std.mem.writeInt(u16, &data, value, .big);
-        try self.addField(0x10, field_code, &data);
+        try self.addField(TypeCode.UInt16, field_code, &data);
     }
 
-    /// Add UInt32 field
+    /// Add UInt32 field (type code 2)
     pub fn addUInt32(self: *CanonicalSerializer, field_code: u8, value: u32) !void {
         var data: [4]u8 = undefined;
         std.mem.writeInt(u32, &data, value, .big);
-        try self.addField(0x20, field_code, &data);
+        try self.addField(TypeCode.UInt32, field_code, &data);
     }
 
-    /// Add UInt64 field
+    /// Add UInt64 field (type code 3)
     pub fn addUInt64(self: *CanonicalSerializer, field_code: u8, value: u64) !void {
         var data: [8]u8 = undefined;
         std.mem.writeInt(u64, &data, value, .big);
-        try self.addField(0x60, field_code, &data);
+        try self.addField(TypeCode.UInt64, field_code, &data);
     }
 
-    /// Add Account ID
+    /// Add XRP Amount field (type code 6)
+    /// XRP amounts: set bit 62 (positive), clear bit 63 (not IOU)
+    /// Encoded as: 0x4000000000000000 | drops
+    pub fn addXRPAmount(self: *CanonicalSerializer, field_code: u8, drops: u64) !void {
+        var data: [8]u8 = undefined;
+        const encoded = 0x4000000000000000 | drops;
+        std.mem.writeInt(u64, &data, encoded, .big);
+        try self.addField(TypeCode.Amount, field_code, &data);
+    }
+
+    /// Add Account ID field (type code 8)
+    /// Account IDs are 20 bytes with VL prefix
     pub fn addAccountID(self: *CanonicalSerializer, field_code: u8, account: types.AccountID) !void {
-        try self.addField(0x80, field_code, &account);
+        // AccountID fields use VL encoding: length prefix + 20 bytes
+        var data: [21]u8 = undefined;
+        data[0] = 20; // VL length prefix
+        @memcpy(data[1..21], &account);
+        try self.addField(TypeCode.AccountID, field_code, &data);
     }
 
-    /// Add Hash256
+    /// Add Hash256 field (type code 5)
     pub fn addHash256(self: *CanonicalSerializer, field_code: u8, hash: [32]u8) !void {
-        try self.addField(0x50, field_code, &hash);
+        try self.addField(TypeCode.Hash256, field_code, &hash);
     }
 
-    /// Add variable length field
-    pub fn addVL(self: *CanonicalSerializer, field_code: u8, data: []const u8) !void {
-        // Encode length + data
+    /// Add Blob/VL field (type code 7) — variable-length with length prefix
+    pub fn addBlob(self: *CanonicalSerializer, field_code: u8, data: []const u8) !void {
         var encoded = try std.ArrayList(u8).initCapacity(self.allocator, data.len + 3);
-        defer encoded.deinit(self.allocator);
+        defer encoded.deinit();
 
-        // Length encoding
+        // XRPL VL encoding
         if (data.len <= 192) {
-            try encoded.append(self.allocator, @intCast(data.len));
+            try encoded.append(@intCast(data.len));
         } else if (data.len <= 12480) {
             const len = data.len - 193;
-            try encoded.append(self.allocator, 193 + @as(u8, @intCast(len / 256)));
-            try encoded.append(self.allocator, @intCast(len % 256));
+            try encoded.append(193 + @as(u8, @intCast(len / 256)));
+            try encoded.append(@intCast(len % 256));
         } else {
             const len = data.len - 12481;
-            try encoded.append(self.allocator, 241 + @as(u8, @intCast(len / 65536)));
-            try encoded.append(self.allocator, @intCast((len / 256) % 256));
-            try encoded.append(self.allocator, @intCast(len % 256));
+            try encoded.append(241 + @as(u8, @intCast(len / 65536)));
+            try encoded.append(@intCast((len / 256) % 256));
+            try encoded.append(@intCast(len % 256));
         }
+        try encoded.appendSlice(data);
 
-        try encoded.appendSlice(self.allocator, data);
-
-        const final_data = try encoded.toOwnedSlice(self.allocator);
-        try self.addField(0x70, field_code, final_data);
+        const final_data = try encoded.toOwnedSlice();
+        // addField will dupe, but we already own this — transfer ownership directly
+        try self.fields.append(FieldOrder{
+            .type_code = TypeCode.Blob,
+            .field_code = field_code,
+            .data = final_data,
+        });
     }
 
-    /// Finalize: Sort fields and output in canonical order
+    // Legacy alias for backward compatibility with canonical_tx.zig
+    pub fn addVL(self: *CanonicalSerializer, field_code: u8, data: []const u8) !void {
+        return self.addBlob(field_code, data);
+    }
+
+    /// Encode a field header byte(s) for (type_code, field_code)
+    fn encodeFieldHeader(output: *std.ArrayList(u8), type_code: u8, field_code: u8) !void {
+        if (type_code < 16 and field_code < 16) {
+            try output.append((type_code << 4) | field_code);
+        } else if (type_code < 16 and field_code >= 16) {
+            try output.append(type_code << 4);
+            try output.append(field_code);
+        } else if (type_code >= 16 and field_code < 16) {
+            try output.append(field_code);
+            try output.append(type_code);
+        } else {
+            try output.append(0);
+            try output.append(type_code);
+            try output.append(field_code);
+        }
+    }
+
+    /// Finalize: Sort fields and output in canonical XRPL order
     pub fn finish(self: *CanonicalSerializer) ![]u8 {
-        // Sort fields by (type_code, field_code)
+        // Sort fields by (type_code, field_code) — XRPL canonical ordering
         std.mem.sort(FieldOrder, self.fields.items, {}, FieldOrder.lessThan);
 
-        // Build final output
         var output = try std.ArrayList(u8).initCapacity(self.allocator, self.fields.items.len * 16);
-        errdefer output.deinit(self.allocator);
+        errdefer output.deinit();
 
         for (self.fields.items) |field| {
-            // Type/field byte
-            try output.append(self.allocator, field.type_code | (field.field_code & 0x0F));
-
-            // Data
-            try output.appendSlice(self.allocator, field.data);
+            // Encode field header
+            try encodeFieldHeader(&output, field.type_code, field.field_code);
+            // Append field data
+            try output.appendSlice(field.data);
         }
 
-        return output.toOwnedSlice(self.allocator);
+        return output.toOwnedSlice();
     }
 };
 
-test "canonical ordering" {
+// ── Tests ──
+
+test "canonical ordering produces correct field sequence" {
     const allocator = std.testing.allocator;
     var ser = try CanonicalSerializer.init(allocator);
     defer ser.deinit();
 
-    // Add fields in random order
-    try ser.addUInt32(4, 1000); // Sequence
-    try ser.addUInt64(8, 10); // Fee
-    try ser.addUInt16(2, 0); // TransactionType
+    // Add fields out of order
+    try ser.addUInt32(4, 1000); // Sequence (type 2, field 4)
+    try ser.addXRPAmount(8, 10); // Fee (type 6, field 8)
+    try ser.addUInt16(2, 0); // TransactionType (type 1, field 2)
 
     const result = try ser.finish();
     defer allocator.free(result);
 
-    // Fields should be sorted: UInt16 (type 0x10) before UInt32 (0x20) before UInt64 (0x60)
-    // So TransactionType should come first
+    // Expected order: UInt16 (type 1) < UInt32 (type 2) < Amount (type 6)
+    // First byte should be field header for (type=1, field=2) = 0x12
+    try std.testing.expectEqual(@as(u8, 0x12), result[0]);
+    // After UInt16 (2 bytes data), next should be (type=2, field=4) = 0x24
+    try std.testing.expectEqual(@as(u8, 0x24), result[3]);
+    // After UInt32 (4 bytes data), next should be (type=6, field=8) = 0x68
+    try std.testing.expectEqual(@as(u8, 0x68), result[8]);
 
-    std.debug.print("[PASS] Canonical field ordering implemented\n", .{});
+    std.debug.print("[PASS] Canonical field ordering with correct XRPL type codes\n", .{});
     std.debug.print("   Output length: {d} bytes\n", .{result.len});
 }
 
-test "field sorting" {
+test "field sorting by type then field code" {
     var fields = [_]FieldOrder{
-        .{ .type_code = 0x60, .field_code = 8, .data = &[_]u8{} }, // UInt64
-        .{ .type_code = 0x20, .field_code = 4, .data = &[_]u8{} }, // UInt32
-        .{ .type_code = 0x10, .field_code = 2, .data = &[_]u8{} }, // UInt16
+        .{ .type_code = TypeCode.Amount, .field_code = 8, .data = &[_]u8{} },
+        .{ .type_code = TypeCode.UInt32, .field_code = 4, .data = &[_]u8{} },
+        .{ .type_code = TypeCode.UInt16, .field_code = 2, .data = &[_]u8{} },
+        .{ .type_code = TypeCode.AccountID, .field_code = 1, .data = &[_]u8{} },
+        .{ .type_code = TypeCode.UInt32, .field_code = 2, .data = &[_]u8{} }, // Flags
     };
 
     std.mem.sort(FieldOrder, &fields, {}, FieldOrder.lessThan);
 
-    // Should be ordered: 0x10, 0x20, 0x60
-    try std.testing.expectEqual(@as(u8, 0x10), fields[0].type_code);
-    try std.testing.expectEqual(@as(u8, 0x20), fields[1].type_code);
-    try std.testing.expectEqual(@as(u8, 0x60), fields[2].type_code);
+    try std.testing.expectEqual(TypeCode.UInt16, fields[0].type_code);
+    try std.testing.expectEqual(TypeCode.UInt32, fields[1].type_code);
+    try std.testing.expectEqual(@as(u8, 2), fields[1].field_code); // Flags
+    try std.testing.expectEqual(TypeCode.UInt32, fields[2].type_code);
+    try std.testing.expectEqual(@as(u8, 4), fields[2].field_code); // Sequence
+    try std.testing.expectEqual(TypeCode.Amount, fields[3].type_code);
+    try std.testing.expectEqual(TypeCode.AccountID, fields[4].type_code);
 
     std.debug.print("[PASS] Field sorting works correctly\n", .{});
+}
+
+test "XRP amount encoding" {
+    const allocator = std.testing.allocator;
+    var ser = try CanonicalSerializer.init(allocator);
+    defer ser.deinit();
+
+    // 1 XRP = 1,000,000 drops
+    try ser.addXRPAmount(1, 1_000_000);
+
+    const result = try ser.finish();
+    defer allocator.free(result);
+
+    // Field header: type=6, field=1 → 0x61
+    try std.testing.expectEqual(@as(u8, 0x61), result[0]);
+
+    // Amount bytes: 0x4000000000000000 | 1000000 = 0x40000000000F4240
+    try std.testing.expectEqual(@as(u8, 0x40), result[1]);
+    try std.testing.expectEqual(@as(u8, 0x00), result[2]);
+    try std.testing.expectEqual(@as(u8, 0x00), result[3]);
+    try std.testing.expectEqual(@as(u8, 0x00), result[4]);
+    try std.testing.expectEqual(@as(u8, 0x00), result[5]);
+    try std.testing.expectEqual(@as(u8, 0x0F), result[6]);
+    try std.testing.expectEqual(@as(u8, 0x42), result[7]);
+    try std.testing.expectEqual(@as(u8, 0x40), result[8]);
+
+    std.debug.print("[PASS] XRP amount encoding correct\n", .{});
+}
+
+test "field header encoding" {
+    const allocator = std.testing.allocator;
+    var buf = try std.ArrayList(u8).initCapacity(allocator, 4);
+    defer buf.deinit();
+
+    // type < 16, field < 16 → single byte
+    try CanonicalSerializer.encodeFieldHeader(&buf, 1, 2);
+    try std.testing.expectEqual(@as(u8, 0x12), buf.items[0]);
+    buf.clearRetainingCapacity();
+
+    // type < 16, field >= 16 → two bytes
+    try CanonicalSerializer.encodeFieldHeader(&buf, 2, 20);
+    try std.testing.expectEqual(@as(u8, 0x20), buf.items[0]);
+    try std.testing.expectEqual(@as(u8, 20), buf.items[1]);
+
+    std.debug.print("[PASS] Field header encoding correct\n", .{});
 }

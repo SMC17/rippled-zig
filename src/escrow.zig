@@ -19,12 +19,12 @@ pub const EscrowManager = struct {
                 self.allocator.free(cond);
             }
         }
-        self.escrows.deinit(self.allocator);
+        self.escrows.deinit();
     }
 
     /// Create an escrow
     pub fn createEscrow(self: *EscrowManager, escrow: Escrow) !void {
-        try self.escrows.append(self.allocator, escrow);
+        try self.escrows.append(escrow);
     }
 
     /// Finish an escrow (release funds)

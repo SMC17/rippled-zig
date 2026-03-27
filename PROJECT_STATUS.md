@@ -2,203 +2,240 @@
 
 Canonical status for this repository. If any other file conflicts with this document, this document is authoritative.
 
-Last Updated: 2026-02-24
-Commit: working tree (documentation consolidation + execution-track updates)
+Last Updated: 2026-03-26
+Commit: working tree (v1 toolkit repositioning)
 Status Owner: Engineering
 Scope: `main`
 
+---
+
 ## Policy
+
 - No unqualified percentage claims.
-- Every technical claim must map to objective evidence.
-- Experimental paths are excluded from parity claims.
+- Every technical claim must map to objective, reproducible evidence.
+- Experimental modules are excluded from all release claims.
+- Gate results older than 14 days without a follow-up run are considered stale.
+
+---
+
+## V1 Release Claim
+
+**rippled-zig v1** is a Zig XRPL Protocol Toolkit providing:
+
+1. **Canonical transaction encoding** for Payment, AccountSet, OfferCreate, and OfferCancel
+2. **Signing-hash generation** (SHA-512Half with XRPL `STX` prefix domain separation) and **signature verification** (secp256k1 via libsecp256k1, Ed25519 via Zig standard library)
+3. **Selected live RPC conformance** for `server_info`, `fee`, `ledger`, `ledger_current`, `account_info`, and `submit` (narrow transaction subset)
+4. **Stable Zig library and CLI surface** built and tested against Zig 0.14.1
+5. **Signed release evidence** with all gates green and artifact chain intact
+
+### Explicitly Outside V1
+
+- Validator or full node operation
+- P2P overlay / peer protocol parity
+- Full ledger sync
+- Consensus participation or parity
+- Storage durability guarantees
+- Agent control surfaces as part of the release promise
+
+---
 
 ## Release Decision
-- Release Candidate: `NO`
-- Blocking Gates:
-  - Gate A (Build + Unit/Integration): `PASS`
-  - Gate B (Deterministic Serialization/Hash): `PASS`
-  - Gate C (Cross-Impl Parity vs rippled): `PASS`
-  - Gate D (Live Testnet Conformance): `PASS` (or explicit `SKIPPED` with artifact when secrets are absent)
-  - Gate E (Security/Fuzz/Static): `PASS`
-  - Sim (Deterministic Local Cluster): `PASS`
 
-## Weekly Gate Results
-| Week Of | Gate A | Gate B | Gate C | Gate D | Gate E | Notes |
-|---|---|---|---|---|---|---|
-| 2026-02-16 | PASS | PASS | PASS | PASS | PASS | Baseline quality gates green; Gate D policy accepts explicit `skipped` artifact when secrets are unavailable. |
-| 2026-02-18 | PASS | PASS | PASS | SKIPPED/POLICY | PASS | Gate B/C/E hardening merged; Gate E is now rg/grep portable; release summary green on `main`. |
+| Field | Value |
+|---|---|
+| Release Candidate | **NO** |
+| Decision | **NO-GO** |
+| Decision Date | Pending |
+| Decision Owner | Engineering Lead |
 
-## Release Decision Block
-- Current Decision: `NO-GO`
-- Required for `GO`:
-  - Gate A/B/C/E are green on latest commit.
-  - Gate D is either green (with secrets configured) or explicitly `skipped` with artifact reason.
-  - Signed release artifact policy is satisfied for production-oriented tags (`SHA256SUMS.sig` + verifier path).
-  - No unresolved `HIGH` severity risks in the risk register.
-  - `PROJECT_STATUS.md` evidence table updated with run links/commit SHAs.
-- Current Blockers:
-  - Production-readiness evidence is still incomplete (full network sync compatibility, exhaustive cryptographic parity, security audit).
-  - Need sustained green runs over time window, not a single-cycle pass, before considering `GO`.
+### Gate Status (Current)
 
-## Claim -> Evidence Register
-| Claim ID | Claim | Scope | Evidence Type | Evidence Path | Commit SHA | Date | Reviewer | Result |
-|---|---|---|---|---|---|---|---|---|
-| C-001 | Toolchain pinned to Zig 0.15.1 | Gate A | CI config + tool pin | `.github/workflows/ci.yml`, `.tool-versions` | working tree | 2026-02-18 | pending | PASS |
-| C-002 | Quality gates A/B/C/E are required and green in PR flow | A/B/C/E | CI workflow + run history | `https://github.com/SMC17/rippled-zig/actions/workflows/quality-gates.yml?query=branch%3Amain` | working tree | 2026-02-18 | pending | PASS |
-| C-003 | Gate D supports strict live conformance and explicit skip artifact mode | Gate D | gate script + artifacts | `scripts/gates/gate_d.sh`, quality-gates artifacts | working tree | 2026-02-18 | pending | PASS |
-| C-004 | Gate E enforces security checks plus fuzz budget/runtime thresholds | Gate E | gate script + checker | `scripts/gates/gate_e.sh`, `src/security_check.zig` | working tree | 2026-02-18 | pending | PASS |
-| C-005 | Branch protection required-check baseline is documented for `main` | Repo Policy | branch protection runbook | `.github/BRANCH_PROTECTION_BASELINE.md` | working tree | 2026-02-18 | pending | PASS |
-| C-006 | Signed release artifact policy and verifier runbook are documented | Release Security | policy + runbook + workflow | `docs/RELEASE_SIGNING_POLICY.md`, `docs/RELEASE_SIGNING.md`, `.github/workflows/ci.yml` | working tree | 2026-02-20 | pending | PASS |
+| Gate | Name | Status | Evidence |
+|---|---|---|---|
+| A | Build + Unit/Integration | **PASS** | `scripts/gates/gate_a.sh` exit 0; CI workflow artifacts |
+| B | Deterministic Serialization/Hash | **PASS** | `scripts/gates/gate_b.sh` exit 0; fixture SHA-256 manifest |
+| C | Cross-Impl Parity (vs rippled) | **PASS** | `scripts/gates/gate_c.sh` exit 0; strict crypto with `GATE_C_STRICT_CRYPTO=true` |
+| D | Live Testnet Conformance | **PASS** | `scripts/gates/gate_d.sh` exit 0; or explicit `SKIPPED` artifact when secrets absent |
+| E | Security / Fuzz / Static | **PASS** | `scripts/gates/gate_e.sh` exit 0; security-metrics.json |
+| Sim | Deterministic Local Cluster | **PASS** | `scripts/gates/gate_sim.sh` exit 0; simulation-summary.json |
+
+### Required for GO
+
+- [ ] Gates A/B/C/E green on tagged release commit
+- [ ] Gate D green (or explicit skip with artifact) on tagged release commit
+- [ ] Canonical codec complete for declared v1 transaction set (Payment, AccountSet, OfferCreate, OfferCancel)
+- [ ] secp256k1 and Ed25519 verification paths exercised by Gate C strict vectors
+- [ ] Signed release artifact policy satisfied (`SHA256SUMS.sig` + verifier path)
+- [ ] No unresolved HIGH severity risks in risk register
+- [ ] Sustained green gate runs across minimum 4-week window
+- [ ] This document updated with final evidence table, commit SHAs, and run links
+
+### Current Blockers
+
+- Canonical codec and signing/verification surfaces not yet complete for declared v1 transaction set
+- Repository messaging repositioning in progress (#46)
+- Production-readiness evidence incomplete (audit, sustained soak)
+- Need sustained green runs over time window, not single-cycle pass
+
+---
+
+## Claim-to-Evidence Register
+
+| ID | Claim | Scope | Evidence Type | Evidence Path | Status |
+|---|---|---|---|---|---|
+| C-001 | Toolchain pinned to Zig 0.14.1 | Gate A | CI config + tool pin | `.github/workflows/ci.yml`, `.tool-versions` | PASS |
+| C-002 | Gates A/B/C/E required and green in PR flow | A/B/C/E | CI workflow + run history | `.github/workflows/quality-gates.yml` | PASS |
+| C-003 | Gate D supports strict live conformance and explicit skip | Gate D | Gate script + artifacts | `scripts/gates/gate_d.sh` | PASS |
+| C-004 | Gate E enforces security checks and fuzz budget thresholds | Gate E | Gate script + metrics | `scripts/gates/gate_e.sh`, `src/security_check.zig` | PASS |
+| C-005 | Branch protection baseline documented for `main` | Repo Policy | Branch protection runbook | `.github/BRANCH_PROTECTION_BASELINE.md` | PASS |
+| C-006 | Signed release artifact policy documented | Release Security | Policy + runbook + workflow | `docs/RELEASE_SIGNING_POLICY.md`, `.github/workflows/ci.yml` | PASS |
+| C-007 | Canonical encoding covers Payment, AccountSet, OfferCreate, OfferCancel | Gate B | Deterministic vectors + fixture manifest | `src/canonical_tx.zig`, `src/determinism_check.zig` | IN PROGRESS |
+| C-008 | secp256k1 strict verification with positive and negative vectors | Gate C | Strict crypto harness | `src/parity_check.zig`, `scripts/gates/gate_c.sh` | PASS |
+| C-009 | Ed25519 signing and verification | Crypto | Unit tests | `src/crypto.zig` | IN PROGRESS |
+| C-010 | Live RPC conformance for declared 6-method subset | Gate D | Live endpoint validation | `scripts/gates/gate_d.sh`, trend artifacts | PASS |
+| C-011 | Repository positioned as toolkit, not node | Docs | README.md, PROJECT_STATUS.md | This document, `README.md` | IN PROGRESS |
+
+---
 
 ## Gate Definitions
+
 ### Gate A: Build + Unit/Integration
-Pass Criteria:
-- `scripts/gates/gate_a.sh` exits 0 on required OS matrix.
-- Zig version equals `0.15.1`.
+
+**Pass criteria:**
+- `scripts/gates/gate_a.sh` exits 0 on required OS matrix
+- Zig version equals `0.14.1`
 
 ### Gate B: Deterministic Serialization/Hash
-Pass Criteria:
-- `scripts/gates/gate_b.sh` exits 0.
-- Serialization and hash suites pass.
-- Fixture SHA-256 manifest generated.
+
+**Pass criteria:**
+- `scripts/gates/gate_b.sh` exits 0
+- Serialization and hash suites pass for all declared transaction types
+- Fixture SHA-256 manifest generated and matches committed baseline (`test_data/fixture_manifest.sha256`)
+- Vector hash evidence emitted for each deterministic vector (VL boundaries, drops encoding, mixed-field ordering)
 
 ### Gate C: Cross-Implementation Parity
-Pass Criteria:
-- `scripts/gates/gate_c.sh` exits 0.
-- RPC and real-data parity suites pass.
-- Fixture-contract checks pass.
+
+**Pass criteria:**
+- `scripts/gates/gate_c.sh` exits 0
+- RPC fixture parity checks pass (stable fields, cross-fixture consistency)
+- secp256k1 strict verification with `GATE_C_STRICT_CRYPTO=true`: 3 positive vectors, 3 negative vectors
+- Signing-domain correctness: `SHA512Half(STX || canonical)` equals expected signing hash; regression checks against wrong-prefix and body-only hashes
 
 ### Gate D: Live Testnet Conformance
-Pass Criteria:
-- `scripts/gates/gate_d.sh` exits 0 with `TESTNET_RPC_URL` and `TESTNET_WS_URL` set.
-- Live `server_info`, `fee`, `ledger`, `ping`, and `ledger_current` fields/status validated from testnet responses.
-- Operator setup/cadence/troubleshooting follows `docs/GATE_D_OPERATOR_RUNBOOK.md`.
-- Operator setup/cadence/troubleshooting follows `docs/GATE_D_OPERATOR_RUNBOOK.md`.
+
+**Pass criteria:**
+- `scripts/gates/gate_d.sh` exits 0 with `TESTNET_RPC_URL` and `TESTNET_WS_URL` configured
+- Live `server_info`, `fee`, `ledger`, `ledger_current`, `account_info` fields validated
+- Trend success-rate floor and p95 latency ceiling enforced from 7-day rolling summary
+- Operator runbook: `docs/GATE_D_OPERATOR_RUNBOOK.md`
 
 ### Gate E: Security
-Pass Criteria:
-- `scripts/gates/gate_e.sh` exits 0.
-- Security suites pass.
-- Runtime-safety scan has zero violations.
 
-## Current Capability Matrix
-| Area | State | Evidence | Included in Parity Claim |
+**Pass criteria:**
+- `scripts/gates/gate_e.sh` exits 0
+- Security suites pass with zero runtime-safety violations
+- Fuzz budget enforcement with profile-based thresholds (`pr` vs `nightly`)
+- Crash-free marker enforcement
+- Trend success-rate, crash-free-rate, p95 runtime, and avg fuzz budget floors from 7-day summary
+
+### Sim: Deterministic Local Cluster
+
+**Pass criteria:**
+- `scripts/gates/gate_sim.sh` exits 0
+- Profile-based thresholds enforced (`pr` vs `nightly`)
+- 7-day trend drift checks for success-rate, p95 latency, avg nodes
+
+---
+
+## Weekly Gate Results
+
+| Week Of | A | B | C | D | E | Sim | Notes |
+|---|---|---|---|---|---|---|---|
+| 2026-02-16 | PASS | PASS | PASS | PASS | PASS | PASS | Baseline quality gates green |
+| 2026-02-18 | PASS | PASS | PASS | SKIP | PASS | PASS | Gate D accepts explicit skip artifact |
+
+---
+
+## Capability Matrix
+
+| Area | V1 Scope | State | Evidence Source |
 |---|---|---|---|
-| Core build | Passing in CI (A) | gate-a artifacts | NO |
-| Serialization checks | Fixed-hash deterministic gate | `src/determinism_check.zig` | NO |
-| RPC methods | Implemented with mixed maturity | `src/rpc_methods.zig`, `src/rpc_complete.zig` | NO |
-| Peer protocol | Partial | `src/peer_protocol.zig` | NO |
-| Ledger sync | Partial | `src/ledger_sync.zig` | NO |
-| secp256k1 verify | Partial | `src/secp256k1*.zig` | NO |
-| Testnet conformance | Wired via Gate D | `scripts/gates/gate_d.sh` | NO |
-| Security scans | Wired via Gate E with strict negatives | `scripts/gates/gate_e.sh`, `src/security_check.zig` | NO |
+| Canonical transaction encoding | Payment, AccountSet, OfferCreate, OfferCancel | In progress | `src/canonical_tx.zig`, Gate B |
+| Signing-hash generation | SHA-512Half + STX prefix | Implemented | `src/crypto.zig`, Gate B/C |
+| secp256k1 verification | Strict external path via libsecp256k1 | Implemented | `src/secp256k1*.zig`, Gate C |
+| Ed25519 verification | Via Zig std library | In progress | `src/crypto.zig` |
+| Base58Check encoding | Address encode/decode | Implemented | `src/base58.zig` |
+| RPC: server_info | Live + fixture | Implemented | Gate D, Gate C |
+| RPC: fee | Live + fixture | Implemented | Gate D, Gate C |
+| RPC: ledger | Live + fixture | Implemented | Gate D, Gate C |
+| RPC: ledger_current | Live + fixture | Implemented | Gate D, Gate C |
+| RPC: account_info | Live + fixture | Implemented | Gate D, Gate C |
+| RPC: submit | Narrow transaction subset | Implemented | Gate D, Gate C |
+| CLI surface | Build, test, run, gates | Stable | Gate A |
+
+### Not in V1 Scope
+
+| Area | State | Notes |
+|---|---|---|
+| Peer protocol | Experimental | `src/peer_protocol.zig` -- research only |
+| Ledger sync | Experimental | `src/ledger_sync.zig` -- research only |
+| Consensus | Experimental | `src/consensus.zig` -- research only |
+| Storage | Experimental | `src/storage.zig`, `src/database.zig` -- research only |
+| Validator operation | Experimental | Not part of any release claim |
+
+---
+
+## Open Risks
+
+| ID | Description | Severity | Owner | Mitigation | Target | Status |
+|---|---|---|---|---|---|---|
+| R-001 | Toolchain drift breaks reproducibility | High | DevOps | Enforce `.tool-versions` and CI check | 2026-03-31 | Open |
+| R-002 | Repo messaging overstates partial node surfaces | High | Eng Lead | Close #46; update README, PROJECT_STATUS, examples | 2026-03-31 | In Progress |
+| R-003 | Partial codec/crypto paths block release claim | High | Crypto/Protocol | Close #48-#54 with gate evidence | 2026-05-15 | Open |
+| R-004 | Live RPC subset and release packaging incomplete | High | API/Release | Close #55-#62 with gate evidence | 2026-07-31 | Open |
+
+---
+
+## V1 Execution Track
+
+**Milestone**: `v1 XRPL Toolkit`
+**Epic**: [#45](https://github.com/SMC17/rippled-zig/issues/45)
+**Child issues**: #46-#62
+
+| Tranche | Issues | Target | Description |
+|---|---|---|---|
+| 1. Scope freeze | #46, #47, #61 | 2026-03-31 | Reposition docs, prune examples, lock toolchain |
+| 2. Codec + crypto | #48-#54 | 2026-05-15 | Canonical encoding and verification for declared tx set |
+| 3. Live + RPC | #55-#57 | 2026-06-15 | RPC subset hardening, live conformance evidence |
+| 4. Public surface | #58-#60 | 2026-07-10 | API/CLI stability, examples, packaging |
+| 5. Release | #62 | 2026-07-31 | Signed artifacts, release checklist, final evidence |
+
+---
 
 ## Known Limitations
-- Several subsystems remain partial and require evidence-backed closure before parity claims.
-- Live testnet conformance is environment-dependent and must run in controlled CI with secrets.
 
-## Open Risks and Owners
-| Risk ID | Description | Severity | Owner | Mitigation | Target Date | Status |
-|---|---|---|---|---|---|---|
-| R-001 | Toolchain drift breaks reproducibility | High | DevOps | enforce `.tool-versions` and CI check | 2026-02-21 | Open |
-| R-002 | Unverified parity claims | High | Eng Lead | gate-based claim policy and evidence register | 2026-02-21 | Open |
-| R-003 | Partial secp256k1 and sync paths | High | Crypto/Network | complete implementation + conformance tests | 2026-03-04 | Open |
+- Several codec and verification paths require evidence-backed closure before release
+- Live testnet conformance is environment-dependent; must run in controlled CI with secrets
+- Experimental modules remain in the repo but carry no correctness claims
+- No independent security audit has been performed
+- No long-horizon soak evidence exists yet
 
-## Changes Since Last Update
-- Documentation consolidation (2026-02-24):
-  - refreshed canonical docs for roadmap/parity/execution-track/current RPC contract state,
-  - added `docs/HISTORICAL_DOCS_INDEX.md` and local ignored archive policy (`.docs_archive_local/`),
-  - removed stale historical docs from active repo surface (recoverable via Git history / local archive),
-  - added Gate D runbook and least-privilege automation policy to onboarding references,
-  - added minimal WASM hook experiment guide.
-- Execution-track progress since last status refresh:
-  - closed child issues `#13`-`#18`, `#20`-`#22`, `#25`-`#27`,
-  - `#19` (Gate D `ping`/`ledger_current`) is implemented but awaiting live testnet artifact run for final acceptance,
-  - `#28` remains the next unblocked research-sandbox child issue.
-- Completed tranche progression for live RPC/control-plane hardening:
-  - strict live handling for `account_info`, `submit`, `ping`, and `ledger_current`,
-  - production profile method-boundary enforcement,
-  - deterministic negative-case schema contracts for live methods.
-- Implemented minimal real `submit` deserialize/validate/apply path:
-  - minimal blob decode and validation flow,
-  - deterministic RPC errors for malformed/unsupported input classes.
-- Expanded `submit` payment shape handling:
-  - destination + amount decode in minimal blob form,
-  - deterministic negative contracts for missing destination account and insufficient payment balance,
-  - Gate C enforcement and parity-check coverage updates.
-- Locked baseline with explicit branch-protection required-check names in `.github/BRANCH_PROTECTION_BASELINE.md`.
-- Expanded Gate B deterministic vectors to cover:
-  - VL length boundaries `192/193` and `12480/12481`,
-  - amount-like drops encoding vector,
-  - mixed-field ordering vector including `Hash256`,
-  - fixed expected serialized bytes and SHA-512Half digests.
-- Added Gate B vector evidence manifest:
-  - `src/determinism_check.zig` now emits `VECTOR_HASH` lines for each deterministic vector,
-  - `scripts/gates/gate_b.sh` now fails if vector evidence count drops below expected baseline.
-- Expanded Gate C fixture parity to full snapshot checks for stable fields and cross-fixture ledger seq/hash consistency across `server_info`, `account_info`, and `current_ledger`.
-- Added Gate C secp256k1 fixture evidence checks from `current_ledger.json`:
-  - fixed `hash` / `SigningPubKey` / `TxnSignature` values,
-  - DER parse validation of signature `r`/`s` components in `src/parity_check.zig`.
-- Added Gate C negative cryptographic controls:
-  - tampered DER signature must fail parse,
-  - tampered pubkey/signature fixture values must fail strict mismatch controls.
-- Started optional strict secp256k1 verification harness in Gate C:
-  - reproducible vector with canonical signing bytes, XRPL `STX` prefix, signing hash, pubkey/signature, expected `verify=true`,
-  - activated only with `GATE_C_STRICT_CRYPTO=true` (and `-Dsecp256k1=true` build).
-- Expanded Gate C strict secp harness to vector-set coverage:
-  - 3 positive known-good vectors (mixed compressed/uncompressed pubkeys, varied DER lengths),
-  - 3 negative strict vectors (`tampered hash`, `tampered r/s`, `wrong pubkey`) expecting `verify=false`,
-  - marker-based reporting/enforcement in `scripts/gates/gate_c.sh`.
-- Added signing-domain correctness guardrails in Gate C:
-  - each strict vector asserts `SHA512Half(STX || canonical)` equals expected signing hash,
-  - explicit regression checks require signing hash to differ from canonical-body hash and wrong-prefix hash,
-  - marker-based enforcement (`SIGNING_DOMAIN_CHECK`) in `scripts/gates/gate_c.sh`.
-- Added decision-grade trend thresholds:
-  - Gate D enforces trend success-rate floor and p95 latency ceilings from `trend-summary-7d.json`,
-  - Gate E enforces trend success-rate, crash-free-rate, p95 runtime, and avg fuzz budget floors from `security-trend-summary-7d.json`.
-- Added per-run operations digest artifact:
-  - `ops-digest.md` generated in release summary job with A-E results, trend values, and pass/fail interpretation.
-- Added fixture baseline governance:
-  - committed manifest `test_data/fixture_manifest.sha256` is enforced in Gate B,
-  - `fixture-refresh` workflow generates refreshed fixtures plus drift summary artifacts,
-  - baseline updates require explicit workflow approval input before a reviewed PR commit.
-- Tightened Gate D for richer evidence with profile metadata, explicit fail reason artifacts, endpoint health fields, and trend-point artifact output.
-- Added Gate D trend consolidation script `scripts/gates/gate_d_trend_merge.sh` for rolling 7-day summaries from prior artifacts.
-- Raised Gate E with profile-based fuzz budgets (`pr` vs `nightly`), seeded adversarial corpus markers, crash-free marker enforcement, and timing/budget artifacts.
-- Added normalized Gate E artifact `security-metrics.json` for historical metric comparisons.
-- Operationalized strict crypto in workflow:
-  - Gate C runs with `GATE_C_STRICT_CRYPTO=true` across CI runs,
-  - installs `libsecp256k1-dev` before strict verification runs.
-- Added Gate E trend consolidation script `scripts/gates/gate_e_trend_merge.sh` and per-run `security-trend-summary-7d.json` output.
-- Added initial agent control surface primitives in RPC layer:
-  - `agent_status` telemetry payload for machine-oriented control loops,
-  - `agent_config_get` for current control-plane parameters,
-  - `agent_config_set` with allowlisted mutable keys and range validation.
-- Added tests for agent control RPC primitives in:
-  - `src/rpc_methods.zig`,
-  - `tests/rpc/methods_comprehensive.zig`.
-- Wired agent control methods through live JSON-RPC server handling in `src/rpc.zig`:
-  - `agent_status`, `agent_config_get`, and `agent_config_set` are now handled in POST JSON-RPC path.
-- Added deterministic offline Gate C schema stability contract for `agent_status`:
-  - fixture: `test_data/agent_status_schema.json`,
-  - enforcement in `scripts/gates/gate_c.sh` and `src/parity_check.zig`.
-- Added deterministic local multi-node simulation harness:
-  - script: `scripts/sim/run_local_cluster.sh`,
-  - artifacts: `simulation-config.json`, `round-events.ndjson`, `round-summary.ndjson`, `simulation-summary.json`, `simulation-report.md`.
-- Added dedicated CI simulation gate in `quality-gates` workflow:
-  - job: `Sim - Deterministic Local Cluster`,
-  - runs on every PR/push and uploads simulation artifacts,
-  - release summary now hard-fails when simulation gate is not `success`.
-- Tightened simulation gate with profile-based thresholds and fail-reason artifacts:
-  - new script: `scripts/gates/gate_sim.sh`,
-  - profiles: `pr` vs `nightly` with explicit threshold values,
-  - emits `sim-gate-report.json` and `failure.txt` for decision-grade diagnostics.
-- Added simulation 7-day trend consolidation and threshold enforcement:
-  - new script: `scripts/gates/gate_sim_trend_merge.sh`,
-  - per-run `sim-trend-point.json` and `sim-trend-summary-7d.json`,
-  - gate fails on trend drift (success-rate, avg success-rate, p95 latency, avg nodes).
+---
 
 ## Sign-Off
-- Engineering Lead: pending
-- Security Lead: pending
-- Date: 2026-02-18
+
+| Role | Name | Date | Decision |
+|---|---|---|---|
+| Engineering Lead | Pending | -- | -- |
+| Security Lead | Pending | -- | -- |
+
+---
+
+## Changes Since Last Update
+
+- 2026-03-26: Repositioned README.md and PROJECT_STATUS.md as toolkit (not node) per #46
+  - Rewrote README.md with toolkit positioning, supported surface tables, architecture diagram, gate badges
+  - Rewrote PROJECT_STATUS.md with exact v1 release claim, evidence register, capability matrix
+  - Added claims C-007 through C-011 to evidence register
+  - Restructured gate results table to include Sim column
+  - Separated capability matrix into v1 scope and not-in-scope sections

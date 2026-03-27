@@ -3,16 +3,18 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const use_secp256k1 = b.option(bool, "secp256k1", "Link against libsecp256k1 for ECDSA verification") orelse false;
+    const use_secp256k1 = b.option(bool, "secp256k1", "Link against libsecp256k1 for ECDSA verification") orelse true;
+    const experimental = b.option(bool, "experimental", "Include experimental node subsystems (consensus, network, p2p)") orelse false;
     const gate_e_fuzz_cases = b.option(u32, "gate_e_fuzz_cases", "Gate E fuzz case budget") orelse 25000;
     const gate_e_profile = b.option([]const u8, "gate_e_profile", "Gate E profile label") orelse "pr";
 
     const build_options = b.addOptions();
     build_options.addOption(bool, "has_secp256k1", use_secp256k1);
+    build_options.addOption(bool, "experimental", experimental);
     build_options.addOption(u32, "gate_e_fuzz_cases", gate_e_fuzz_cases);
     build_options.addOption([]const u8, "gate_e_profile", gate_e_profile);
 
-    // Create main module
+    // ── Main executable (toolkit CLI by default, full node with -Dexperimental) ──
     const main_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
@@ -20,7 +22,6 @@ pub fn build(b: *std.Build) void {
     });
     main_module.addOptions("build_options", build_options);
 
-    // Main executable
     const exe = b.addExecutable(.{
         .name = "rippled-zig",
         .root_module = main_module,
@@ -29,7 +30,6 @@ pub fn build(b: *std.Build) void {
     if (use_secp256k1) {
         exe.linkSystemLibrary("secp256k1");
     }
-
     b.installArtifact(exe);
 
     // Run command
@@ -38,11 +38,10 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
-
-    const run_step = b.step("run", "Run the XRP Ledger daemon");
+    const run_step = b.step("run", "Run rippled-zig (toolkit CLI by default)");
     run_step.dependOn(&run_cmd.step);
 
-    // Tests
+    // ── Tests ──
     const test_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
@@ -62,7 +61,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
 
-    // Gate B: deterministic serialization/hash checks
+    // ── Gate B: deterministic serialization/hash checks ──
     const gate_b_module = b.createModule(.{
         .root_source_file = b.path("src/determinism_check.zig"),
         .target = target,
@@ -81,7 +80,7 @@ pub fn build(b: *std.Build) void {
     const gate_b_step = b.step("gate-b", "Run Gate B deterministic checks");
     gate_b_step.dependOn(&run_gate_b_tests.step);
 
-    // Gate C: parity and contract checks
+    // ── Gate C: parity and contract checks ──
     const gate_c_module = b.createModule(.{
         .root_source_file = b.path("src/parity_check.zig"),
         .target = target,
@@ -100,7 +99,7 @@ pub fn build(b: *std.Build) void {
     const gate_c_step = b.step("gate-c", "Run Gate C parity checks");
     gate_c_step.dependOn(&run_gate_c_tests.step);
 
-    // Gate E: security checks
+    // ── Gate E: security checks ──
     const gate_e_module = b.createModule(.{
         .root_source_file = b.path("src/security_check.zig"),
         .target = target,
@@ -119,33 +118,80 @@ pub fn build(b: *std.Build) void {
     const gate_e_step = b.step("gate-e", "Run Gate E security checks");
     gate_e_step.dependOn(&run_gate_e_tests.step);
 
-    // Research: parameterized consensus experiment harness
-    const consensus_exp_module = b.createModule(.{
-        .root_source_file = b.path("tools/consensus_experiment.zig"),
-        .target = target,
-        .optimize = optimize,
+    // ── WASM: Protocol kernel ──
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .freestanding,
     });
-    consensus_exp_module.addImport("consensus", b.createModule(.{
-        .root_source_file = b.path("src/consensus.zig"),
-        .target = target,
-        .optimize = optimize,
-    }));
-    const consensus_exp_exe = b.addExecutable(.{
-        .name = "consensus-experiment",
-        .root_module = consensus_exp_module,
-    });
-    consensus_exp_exe.linkLibC();
-    if (use_secp256k1) {
-        consensus_exp_exe.linkSystemLibrary("secp256k1");
-    }
-    const run_consensus_exp = b.addRunArtifact(consensus_exp_exe);
-    if (b.args) |args| {
-        run_consensus_exp.addArgs(args);
-    }
-    const consensus_exp_step = b.step("consensus-experiment", "Run parameterized consensus experiment harness");
-    consensus_exp_step.dependOn(&run_consensus_exp.step);
 
-    // Control-plane policy snapshot (deterministic artifact generator)
+    const kernel_module = b.createModule(.{
+        .root_source_file = b.path("src/protocol_kernel.zig"),
+        .target = wasm_target,
+        .optimize = optimize,
+    });
+    const kernel_exe = b.addExecutable(.{
+        .name = "protocol_kernel",
+        .root_module = kernel_module,
+    });
+    kernel_exe.entry = .disabled;
+    const kernel_install = b.addInstallArtifact(kernel_exe, .{
+        .dest_dir = .{ .override = .{ .custom = "wasm" } },
+    });
+    const kernel_step = b.step("wasm-kernel", "Build protocol kernel as WASM");
+    kernel_step.dependOn(&kernel_install.step);
+
+    // ── WASM: Hooks template ──
+    const hook_module = b.createModule(.{
+        .root_source_file = b.path("examples/hook_template.zig"),
+        .target = wasm_target,
+        .optimize = .ReleaseSmall,
+    });
+    const hook_exe = b.addExecutable(.{
+        .name = "hook_template",
+        .root_module = hook_module,
+    });
+    hook_exe.entry = .disabled;
+    hook_exe.rdynamic = true;
+    const hook_install = b.addInstallArtifact(hook_exe, .{
+        .dest_dir = .{ .override = .{ .custom = "wasm" } },
+    });
+    const hook_step = b.step("wasm-hook", "Build Hooks template as WASM");
+    hook_step.dependOn(&hook_install.step);
+
+    const wasm_step = b.step("wasm", "Build all WASM targets (kernel + hook)");
+    wasm_step.dependOn(&kernel_install.step);
+    wasm_step.dependOn(&hook_install.step);
+
+    // ── Experimental-only build steps ──
+    if (experimental) {
+        // Consensus experiment harness
+        const consensus_exp_module = b.createModule(.{
+            .root_source_file = b.path("tools/consensus_experiment.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        consensus_exp_module.addImport("consensus", b.createModule(.{
+            .root_source_file = b.path("src/consensus.zig"),
+            .target = target,
+            .optimize = optimize,
+        }));
+        const consensus_exp_exe = b.addExecutable(.{
+            .name = "consensus-experiment",
+            .root_module = consensus_exp_module,
+        });
+        consensus_exp_exe.linkLibC();
+        if (use_secp256k1) {
+            consensus_exp_exe.linkSystemLibrary("secp256k1");
+        }
+        const run_consensus_exp = b.addRunArtifact(consensus_exp_exe);
+        if (b.args) |args| {
+            run_consensus_exp.addArgs(args);
+        }
+        const consensus_exp_step = b.step("consensus-experiment", "Run parameterized consensus experiment harness");
+        consensus_exp_step.dependOn(&run_consensus_exp.step);
+    }
+
+    // Control-plane policy snapshot (always available — it's a conformance tool)
     const policy_snapshot_module = b.createModule(.{
         .root_source_file = b.path("tools/control_plane_policy_snapshot.zig"),
         .target = target,
@@ -171,48 +217,4 @@ pub fn build(b: *std.Build) void {
     }
     const policy_snapshot_step = b.step("control-plane-policy-snapshot", "Emit deterministic control-plane policy snapshot JSON");
     policy_snapshot_step.dependOn(&run_policy_snapshot.step);
-
-    // WASM: Protocol kernel (hash/serialization subset)
-    const wasm_target = b.resolveTargetQuery(.{
-        .cpu_arch = .wasm32,
-        .os_tag = .freestanding,
-    });
-
-    const kernel_module = b.createModule(.{
-        .root_source_file = b.path("src/protocol_kernel.zig"),
-        .target = wasm_target,
-        .optimize = optimize,
-    });
-    const kernel_exe = b.addExecutable(.{
-        .name = "protocol_kernel",
-        .root_module = kernel_module,
-    });
-    kernel_exe.entry = .disabled;
-    const kernel_install = b.addInstallArtifact(kernel_exe, .{
-        .dest_dir = .{ .override = .{ .custom = "wasm" } },
-    });
-    const kernel_step = b.step("wasm-kernel", "Build protocol kernel as WASM");
-    kernel_step.dependOn(&kernel_install.step);
-
-    // WASM: Hooks template (depends on protocol kernel)
-    const hook_module = b.createModule(.{
-        .root_source_file = b.path("examples/hook_template.zig"),
-        .target = wasm_target,
-        .optimize = .ReleaseSmall,
-    });
-    const hook_exe = b.addExecutable(.{
-        .name = "hook_template",
-        .root_module = hook_module,
-    });
-    hook_exe.entry = .disabled;
-    hook_exe.rdynamic = true; // Preserve exported hook entry points in wasm output.
-    const hook_install = b.addInstallArtifact(hook_exe, .{
-        .dest_dir = .{ .override = .{ .custom = "wasm" } },
-    });
-    const hook_step = b.step("wasm-hook", "Build Hooks template as WASM");
-    hook_step.dependOn(&hook_install.step);
-
-    const wasm_step = b.step("wasm", "Build all WASM targets (kernel + hook)");
-    wasm_step.dependOn(&kernel_install.step);
-    wasm_step.dependOn(&hook_install.step);
 }

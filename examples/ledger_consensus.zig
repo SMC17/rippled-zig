@@ -1,9 +1,19 @@
+// ============================================================================
+// EXPERIMENTAL -- This demo exercises the consensus engine simulation, which
+// is outside the v1 toolkit release promise. Kept for research and integration
+// testing. For toolkit examples see:
+//   examples/encode_transaction.zig
+//   examples/sign_and_verify.zig
+//   examples/address_encoding.zig
+//   examples/rpc_conformance.zig
+// ============================================================================
 const std = @import("std");
 const ledger = @import("ledger.zig");
 const consensus = @import("consensus.zig");
 const types = @import("types.zig");
 
-/// Example: Simulating a consensus round and ledger closing
+/// EXPERIMENTAL: Simulating the consensus module in isolation
+/// (Depends on node-simulation modules outside the v1 toolkit surface.)
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -30,8 +40,8 @@ pub fn main() !void {
 
     std.debug.print("   Consensus state: {s}\n", .{@tagName(consensus_engine.state)});
 
-    // 3. Add some validators to UNL
-    std.debug.print("\n3. Adding validators to UNL...\n", .{});
+    // 3. Add some simulated validators to the local UNL set
+    std.debug.print("\n3. Adding simulated validators to UNL...\n", .{});
     const validator_count = 5;
     var i: u8 = 0;
     while (i < validator_count) : (i += 1) {
@@ -42,7 +52,7 @@ pub fn main() !void {
         };
         try consensus_engine.addValidator(validator);
     }
-    std.debug.print("   Added {} validators to UNL\n", .{validator_count});
+    std.debug.print("   Added {} simulated validators to UNL\n", .{validator_count});
 
     // 4. Simulate consensus rounds
     std.debug.print("\n4. Running consensus rounds...\n", .{});
@@ -57,7 +67,7 @@ pub fn main() !void {
 
         // Simulate transaction collection and validation
         std.debug.print("   - Collecting candidate transactions...\n", .{});
-        std.debug.print("   - Exchanging proposals with validators...\n", .{});
+        std.debug.print("   - Exchanging proposals with simulated validators...\n", .{});
         std.debug.print("   - Reaching 80% consensus threshold...\n", .{});
 
         // Close the ledger with empty transaction set
@@ -84,7 +94,7 @@ pub fn main() !void {
     std.debug.print("   Consensus rounds completed: {}\n", .{num_rounds});
     std.debug.print("   Average time per round: ~100ms (simulated)\n", .{});
 
-    std.debug.print("\n✓ Consensus simulation completed!\n", .{});
+    std.debug.print("\n✓ Experimental consensus simulation completed!\n", .{});
     std.debug.print("\nKey observations:\n", .{});
     std.debug.print("  - Each consensus round typically takes 4-5 seconds in production\n", .{});
     std.debug.print("  - No mining required (unlike Bitcoin)\n", .{});

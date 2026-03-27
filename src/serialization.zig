@@ -24,28 +24,28 @@ pub const Serializer = struct {
     }
 
     pub fn deinit(self: *Serializer) void {
-        self.buffer.deinit(self.allocator);
+        self.buffer.deinit();
     }
 
     /// Add a UInt8 field
     pub fn addUInt8(self: *Serializer, field: FieldID, value: u8) !void {
         const type_code: u8 = 0x10; // UInt8 type
-        try self.buffer.append(self.allocator, type_code | @intFromEnum(field));
-        try self.buffer.append(self.allocator, value);
+        try self.buffer.append(type_code | @intFromEnum(field));
+        try self.buffer.append(value);
     }
 
     /// Add a UInt16 field
     pub fn addUInt16(self: *Serializer, field: FieldID, value: u16) !void {
         const type_code: u8 = 0x10; // UInt16 type
-        try self.buffer.append(self.allocator, type_code | @intFromEnum(field));
-        try self.buffer.appendSlice(self.allocator, std.mem.asBytes(&std.mem.nativeToBig(u16, value)));
+        try self.buffer.append(type_code | @intFromEnum(field));
+        try self.buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToBig(u16, value)));
     }
 
     /// Add a UInt32 field
     pub fn addUInt32(self: *Serializer, field: FieldID, value: u32) !void {
         const type_code: u8 = 0x20; // UInt32 type
-        try self.buffer.append(self.allocator, type_code | @intFromEnum(field));
-        try self.buffer.appendSlice(self.allocator, std.mem.asBytes(&std.mem.nativeToBig(u32, value)));
+        try self.buffer.append(type_code | @intFromEnum(field));
+        try self.buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToBig(u32, value)));
     }
 
     /// Add a UInt64 field (Amount in drops)
@@ -75,44 +75,44 @@ pub const Serializer = struct {
     /// Add a UInt64 field
     fn addUInt64(self: *Serializer, field: FieldID, value: u64) !void {
         const type_code: u8 = 0x60; // UInt64 type
-        try self.buffer.append(self.allocator, type_code | @intFromEnum(field));
-        try self.buffer.appendSlice(self.allocator, std.mem.asBytes(&std.mem.nativeToBig(u64, value)));
+        try self.buffer.append(type_code | @intFromEnum(field));
+        try self.buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToBig(u64, value)));
     }
 
     /// Add an Account ID (160-bit)
     pub fn addAccountID(self: *Serializer, field: FieldID, account: types.AccountID) !void {
         const type_code: u8 = 0x80; // AccountID type
-        try self.buffer.append(self.allocator, type_code | @intFromEnum(field));
-        try self.buffer.appendSlice(self.allocator, &account);
+        try self.buffer.append(type_code | @intFromEnum(field));
+        try self.buffer.appendSlice(&account);
     }
 
     /// Add a Hash256 field
     pub fn addHash256(self: *Serializer, field: FieldID, hash: [32]u8) !void {
         const type_code: u8 = 0x50; // Hash256 type
-        try self.buffer.append(self.allocator, type_code | @intFromEnum(field));
-        try self.buffer.appendSlice(self.allocator, &hash);
+        try self.buffer.append(type_code | @intFromEnum(field));
+        try self.buffer.appendSlice(&hash);
     }
 
     /// Add a variable length field
     pub fn addVL(self: *Serializer, field: FieldID, data: []const u8) !void {
         const type_code: u8 = 0x70; // VL (variable length) type
-        try self.buffer.append(self.allocator, type_code | @intFromEnum(field));
+        try self.buffer.append(type_code | @intFromEnum(field));
 
         // Encode length
         if (data.len <= 192) {
-            try self.buffer.append(self.allocator, @intCast(data.len));
+            try self.buffer.append(@intCast(data.len));
         } else if (data.len <= 12480) {
             const len = data.len - 193;
-            try self.buffer.append(self.allocator, 193 + @as(u8, @intCast(len / 256)));
-            try self.buffer.append(self.allocator, @intCast(len % 256));
+            try self.buffer.append(193 + @as(u8, @intCast(len / 256)));
+            try self.buffer.append(@intCast(len % 256));
         } else {
             const len = data.len - 12481;
-            try self.buffer.append(self.allocator, 241 + @as(u8, @intCast(len / 65536)));
-            try self.buffer.append(self.allocator, @intCast((len / 256) % 256));
-            try self.buffer.append(self.allocator, @intCast(len % 256));
+            try self.buffer.append(241 + @as(u8, @intCast(len / 65536)));
+            try self.buffer.append(@intCast((len / 256) % 256));
+            try self.buffer.append(@intCast(len % 256));
         }
 
-        try self.buffer.appendSlice(self.allocator, data);
+        try self.buffer.appendSlice(data);
     }
 
     /// Get the serialized bytes
@@ -122,7 +122,7 @@ pub const Serializer = struct {
 
     /// Get owned slice
     pub fn toOwnedSlice(self: *Serializer) ![]u8 {
-        return self.buffer.toOwnedSlice(self.allocator);
+        return self.buffer.toOwnedSlice();
     }
 };
 

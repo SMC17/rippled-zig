@@ -149,7 +149,7 @@ pub const Proposal = struct {
         while (offset + 32 <= data.len) {
             var h: types.TxHash = undefined;
             @memcpy(&h, data[offset..][0..32]);
-            try tx_hashes.append(allocator, h);
+            try tx_hashes.append(h);
             offset += 32;
         }
         return Proposal{
